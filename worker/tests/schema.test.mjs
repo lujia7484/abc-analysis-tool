@@ -43,6 +43,18 @@ test('validateInput bounds nickname and validates date format', () => {
   assert.equal(validateInput({ transcript: '内容', date: '2026-08-28' }).date, '2026-08-28');
 });
 
+test('validateInput rejects non-string optional fields', () => {
+  assert.throws(() => validateInput({ transcript: '内容', nickname: 123 }), /昵称必须是字符串/);
+  assert.throws(() => validateInput({ transcript: '内容', date: 20260828 }), /日期必须是字符串/);
+});
+
+test('validateInput rejects impossible calendar dates', () => {
+  for (const date of ['2026-99-99', '2026-02-30', '2025-02-29']) {
+    assert.throws(() => validateInput({ transcript: '内容', date }), /日期必须是真实日期/);
+  }
+  assert.equal(validateInput({ transcript: '内容', date: '2024-02-29' }).date, '2024-02-29');
+});
+
 test('normalizeModelOutput normalizes scene fields and blank source locations', () => {
   const result = normalizeModelOutput({
     scenes: [{
@@ -65,6 +77,11 @@ test('normalizeModelOutput normalizes scene fields and blank source locations', 
 test('normalizeModelOutput ignores model-provided scene IDs', () => {
   const result = normalizeModelOutput({ scenes: [{ id: 'model-id', title: '场景' }] });
   assert.equal(result.scenes[0].id, 'scene-1');
+});
+
+test('normalizeModelOutput ignores model-provided revised provenance', () => {
+  const result = normalizeModelOutput({ scenes: [{ revised: true, title: '场景' }] });
+  assert.equal(result.scenes[0].revised, false);
 });
 
 test('normalizeModelOutput stringifies primitive scene fields but controls revised as boolean', () => {
