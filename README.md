@@ -12,7 +12,9 @@
 
 ## 隐私与使用边界
 
-网页不会主动持久化保存填写的文本。选择 AI 分析时，请求会经过 Cloudflare 发送给 DeepSeek，数据处理同时受 Cloudflare 与 DeepSeek 各自的服务与隐私政策约束。提交前请移除姓名、联系方式、账号、地址等可识别身份的信息。
+网页和我们的 Worker 代码不会有意持久化保存逐字稿或 AI 分析结果。Worker 只保存加盐哈希后的限流计数和重置时间元数据，最长保留至当前一小时限流窗口结束；不会在该限流状态中保存原始 IP、逐字稿或 AI 结果。
+
+选择 AI 分析时，请求会经过 Cloudflare 基础设施发送给 DeepSeek。Cloudflare 和 DeepSeek 可能依据各自政策处理、记录或保留相关数据；这些第三方行为不由我们控制，我们也不对其保留期限作出承诺。请阅读 [Cloudflare 隐私政策](https://www.cloudflare.com/privacypolicy/) 和 [DeepSeek 隐私政策](https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html)。提交前请移除姓名、联系方式、账号、地址等身份识别信息，以及不需要分析的敏感数据。
 
 AI 分析失败时，页面会明确显示“使用基础分析”选项。基础分析在浏览器本机按显式规则运行，不会把文本发送到 AI 接口，也不会伪装成 AI 结果。
 

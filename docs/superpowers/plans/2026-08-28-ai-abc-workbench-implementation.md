@@ -429,7 +429,7 @@ The user, not the agent, enters the DeepSeek key at the hidden prompt.
 
 Run: `npx wrangler secret put RATE_LIMIT_SALT --config worker/wrangler.jsonc`
 
-The user enters a locally generated random value of at least 32 characters at the hidden prompt. Do not print either value.
+The user enters exactly 64 hexadecimal characters generated from 32 random bytes at the hidden prompt, matching Worker validation. Do not print either value.
 
 - [ ] **Step 5: Deploy and capture the public endpoint**
 
