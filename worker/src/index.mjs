@@ -152,8 +152,17 @@ export class RateLimiter {
   }
 
   async alarm() {
-    await this.storage.deleteAll();
     await this.storage.deleteAlarm();
+    const futureResetAt = await this.storage.transaction(async (transaction) => {
+      const current = await transaction.get('limit');
+      if (!current) return null;
+      if (!Number.isFinite(current.resetAt) || current.resetAt <= Date.now()) {
+        await transaction.delete('limit');
+        return null;
+      }
+      return current.resetAt;
+    });
+    if (futureResetAt !== null) await this.storage.setAlarm(futureResetAt);
   }
 }
 

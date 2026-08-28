@@ -39,6 +39,9 @@ function createStorage() {
     async put(key, value) {
       values.set(key, value);
     },
+    async delete(key) {
+      values.delete(key);
+    },
     async deleteAll() {
       values.clear();
     },
@@ -192,12 +195,25 @@ test('RateLimiter resets count after its one-hour window', async () => {
 test('RateLimiter alarm removes stored metadata and clears the scheduled alarm', async () => {
   const storage = createStorage();
   const limiter = new RateLimiter({ storage });
-  await limiter.fetch(new Request('https://limiter/admit', { method: 'POST' }));
+  storage.values.set('limit', { count: 5, resetAt: Date.now() - 1 });
+  await storage.setAlarm(Date.now() - 1);
   assert.ok(storage.values.has('limit'));
   assert.ok(storage.scheduledAlarm);
   await limiter.alarm();
   assert.equal(storage.values.size, 0);
   assert.equal(storage.scheduledAlarm, null);
+});
+
+test('RateLimiter stale alarm preserves a future window and reschedules it', async () => {
+  const storage = createStorage();
+  const limiter = new RateLimiter({ storage });
+  const futureResetAt = Date.now() + 30_000;
+  const metadata = { count: 4, resetAt: futureResetAt };
+  storage.values.set('limit', metadata);
+  await storage.setAlarm(Date.now() - 1);
+  await limiter.alarm();
+  assert.deepEqual(storage.values.get('limit'), metadata);
+  assert.equal(storage.scheduledAlarm, futureResetAt);
 });
 
 test('oversized Content-Length is rejected before rate limiter and upstream', async () => {
