@@ -4,9 +4,9 @@
 
 **Goal:** Upgrade the public ABC workbench into a learner-facing, editable DeepSeek-assisted analyzer with a privacy-preserving Cloudflare Worker and local-rule fallback.
 
-**Architecture:** GitHub Pages serves a dependency-free ES-module frontend. A Cloudflare Worker validates requests, applies hourly hashed-IP rate limits, calls DeepSeek JSON Output, validates the returned schema, and returns only normalized scenes. The frontend never receives the API key and falls back to the existing local analyzer when AI is unavailable.
+**Architecture:** GitHub Pages serves a dependency-free ES-module frontend. A Cloudflare Worker validates requests, applies hourly hashed-IP rate limits atomically through a Durable Object, calls DeepSeek JSON Output, validates the returned schema, and returns only normalized scenes. The Durable Object uses an alarm to remove expired window metadata. The frontend never receives the API key and falls back to the existing local analyzer when AI is unavailable.
 
-**Tech Stack:** HTML, CSS, browser JavaScript modules, Node.js built-in test runner, Cloudflare Workers, Wrangler, Workers KV, DeepSeek Chat Completions API.
+**Tech Stack:** HTML, CSS, browser JavaScript modules, Node.js built-in test runner, Cloudflare Workers, Wrangler, Durable Objects, DeepSeek Chat Completions API.
 
 ---
 
@@ -20,8 +20,8 @@
 - Remove `script.js`: superseded monolithic browser script.
 - Create `worker/src/prompt.mjs`: fixed ABC extraction standard and JSON example.
 - Create `worker/src/schema.mjs`: input and model-output validation.
-- Create `worker/src/index.mjs`: CORS, limits, DeepSeek call, and errors.
-- Create `worker/wrangler.jsonc`: Worker, KV, variables, and required secret declaration.
+- Create `worker/src/index.mjs`: CORS, Durable Object rate limiter, alarm cleanup, DeepSeek call, and errors.
+- Create `worker/wrangler.jsonc`: Worker, Durable Object binding and migration, variables, and required secret declaration.
 - Create `tests/local-analyzer.test.mjs`: fallback behavior tests.
 - Create `tests/api-client.test.mjs`: browser API client tests.
 - Create `worker/tests/schema.test.mjs`: schema and evidence-boundary tests.
@@ -201,7 +201,7 @@ git commit -m "feat: define AI ABC evidence contract"
 
 - [ ] **Step 1: Write failing Worker behavior tests**
 
-Test these exact cases with mocked `fetch` and a mocked KV binding:
+Test these exact cases with mocked `fetch` and a mocked Durable Object binding:
 
 ```js
 test("rejects an unapproved origin with 403", async () => {});
@@ -233,9 +233,9 @@ return Response.json(
 
 Never include request bodies, model raw output, stack traces, or secrets in responses or logs.
 
-- [ ] **Step 4: Implement approximate hourly limits without raw IP storage**
+- [ ] **Step 4: Implement atomic hourly limits without raw IP storage**
 
-Read `CF-Connecting-IP`, hash `env.RATE_LIMIT_SALT + ip` with SHA-256, and use key `hour:<UTC-hour>:<hash>`. Store only the count with `expirationTtl: 3600`. Reject count 5 and above. If no IP exists, use `unknown` plus the salt.
+Read `CF-Connecting-IP`, hash `env.RATE_LIMIT_SALT + ip` with SHA-256, and route the hash to the `RATE_LIMITER` Durable Object. The object atomically admits at most five requests in its one-hour window. Store only hashed identity/window metadata, never the raw IP. Schedule an alarm for window expiry; the alarm removes expired metadata and clears itself, while a stale alarm preserves and reschedules a future window. Fail closed when the client IP is missing.
 
 - [ ] **Step 5: Call DeepSeek JSON Output**
 
@@ -276,7 +276,7 @@ Authorize with `Bearer ${env.DEEPSEEK_API_KEY}`. Apply a 45-second abort timeout
 }
 ```
 
-The KV binding is added during Cloudflare provisioning, using the exact namespace id returned by Wrangler. The id is configuration, not a secret.
+Declare the `RATE_LIMITER` Durable Object binding, its `RateLimiter` class, and the required migration in public Wrangler configuration. Durable Object binding and migration metadata are configuration, not secrets.
 
 - [ ] **Step 7: Run tests and commit**
 
@@ -402,17 +402,18 @@ Run: `npx wrangler login`
 
 Expected: the user completes Cloudflare browser authorization and Wrangler reports successful login.
 
-- [ ] **Step 2: Create the rate-limit namespace**
+- [ ] **Step 2: Configure the Durable Object rate limiter**
 
-Run: `npx wrangler kv namespace create RATE_LIMIT_KV --config worker/wrangler.jsonc`
-
-Expected: Cloudflare returns a namespace id. Add the following `kv_namespaces` property to `worker/wrangler.jsonc`, using that exact returned id:
+Confirm `worker/wrangler.jsonc` declares the `RATE_LIMITER` binding and the `RateLimiter` class migration:
 
 ```jsonc
-"kv_namespaces": [
-  { "binding": "RATE_LIMIT_KV", "id": "the exact id printed by Wrangler" }
-]
+"durable_objects": {
+  "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+},
+"migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }]
 ```
+
+No KV namespace is used or provisioned. Wrangler creates the Durable Object class storage from the migration during deployment.
 
 - [ ] **Step 3: Deploy the Worker code**
 
@@ -449,9 +450,9 @@ git commit -m "chore: configure Cloudflare deployment"
 - Modify: `src/api-client.mjs`
 - Modify: `README.md`
 
-- [ ] **Step 1: Set the public Worker endpoint**
+- [ ] **Step 1: Set and pin the public Worker endpoint**
 
-Set the exported default endpoint in `src/api-client.mjs` to the exact `workers.dev/analyze` URL returned during deployment.
+Set `index.html` meta `abc-api-endpoint` to the exact deployed `https://abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze` URL. Pin `src/api-client.mjs` validation to that exact HTTPS hostname and `/analyze` path; reject credentials, query, fragment, and every explicit port.
 
 - [ ] **Step 2: Run automated verification**
 
@@ -459,7 +460,7 @@ Run: `npm test`
 
 Expected: all tests PASS with zero failures.
 
-- [ ] **Step 3: Run a safe live smoke request**
+- [ ] **Step 3: Run a safe live smoke request (deployment phase only)**
 
 Send an anonymous three-line example to the Worker. Confirm HTTP 200, `mode: "ai"`, a `scenes` array, and no API key or raw upstream metadata in the response.
 
@@ -475,12 +476,11 @@ Check desktop and mobile widths. Confirm there is no course-round field, no real
 
 Document the public page, Worker endpoint, privacy behavior, DeepSeek billing responsibility, secret rotation command, limit behavior, local test command, and redeploy command. Do not include secret values.
 
-- [ ] **Step 7: Commit and push**
+- [ ] **Step 7: Commit locally, then publish only after local approval**
 
 ```bash
 git add src/api-client.mjs README.md
 git commit -m "docs: document AI deployment and privacy"
-git push origin main
 ```
 
-Expected: GitHub Pages deploys the latest `main` commit and the live page successfully completes an AI analysis.
+Expected for the local/code phase: all checks pass and the public-file commit is ready, with no push and no network calls. A later explicitly approved deployment phase may push and verify GitHub Pages plus the live Worker.

@@ -7,7 +7,7 @@ import {
   setApiEndpoint,
 } from "../src/api-client.mjs";
 
-const endpoint = "https://abc-worker.example.workers.dev/analyze";
+const endpoint = "https://abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze";
 
 function validScene(overrides = {}) {
   return {
@@ -38,8 +38,8 @@ test("analyzeWithAI requires endpoint configuration", async () => {
   );
 });
 
-test("setApiEndpoint accepts and normalizes a valid workers.dev URL", () => {
-  setApiEndpoint("https://abc-worker.example.workers.dev:443/analyze");
+test("setApiEndpoint accepts only the exact production endpoint", () => {
+  setApiEndpoint(endpoint);
   assert.equal(getApiEndpoint(), endpoint);
 });
 
@@ -56,11 +56,13 @@ test("setApiEndpoint rejects disallowed URL forms and preserves the prior endpoi
     "https://10.0.0.1/analyze",
     "https://localhost/analyze",
     "https://example.com/analyze",
+    "https://abc-worker.example.workers.dev/analyze",
     "https://workers.dev.example.com/analyze",
-    "https://user:password@abc-worker.example.workers.dev/analyze",
-    "https://abc-worker.example.workers.dev:8443/analyze",
-    "https://abc-worker.example.workers.dev/analyze?debug=1",
-    "https://abc-worker.example.workers.dev/analyze#details",
+    "https://user:password@abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze",
+    "https://abc-analysis-api.codex-ai-abc-workbench.workers.dev:443/analyze",
+    "https://abc-analysis-api.codex-ai-abc-workbench.workers.dev:8443/analyze",
+    "https://abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze?debug=1",
+    "https://abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze#details",
   ]) {
     assert.throws(() => setApiEndpoint(value), /有效的 HTTPS.*\/analyze/);
     assert.equal(getApiEndpoint(), endpoint);

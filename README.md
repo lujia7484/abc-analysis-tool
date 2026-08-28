@@ -1,17 +1,56 @@
-# ABC Analysis Tool
+# 学员自助 ABC 分析工具
 
-面向学员的 ABC 模式分析网页工具。
+这是一个面向学员的 ABC 行为观察工作台，用于把经历或逐字稿整理为 A（前因）、B（可观察的表达与行动）和 C（随后发生的结果）。生成内容是供学习和复核的观察草稿，不构成医学、心理或教育诊断。
 
-## 使用方式
+## 在线访问与架构
 
-打开网页，填写学员信息并粘贴课堂或访谈材料，即可生成结构化的 A（前因）、B（行为）和 C（结果）分析，并导出 JSON 或 CSV。
+- 公开网页：https://lujia7484.github.io/abc-analysis-tool/
+- AI 接口：https://abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze
+- CORS 允许来源：`https://lujia7484.github.io`
 
-## 数据说明
+静态网页由 GitHub Pages 提供。AI 请求发送到 Cloudflare Worker；Worker 负责输入校验、基于 Durable Object 的原子限流、调用 DeepSeek 和输出规范化。DeepSeek 密钥不会发送到浏览器。
 
-当前版本在浏览器本地完成规则分析，不会自动上传或保存学员填写的内容。自动分析结果仅用于初步整理，重要结论需要人工复核。
+## 隐私与使用边界
 
-## 在线访问
+网页不会主动持久化保存填写的文本。选择 AI 分析时，请求会经过 Cloudflare 发送给 DeepSeek，数据处理同时受 Cloudflare 与 DeepSeek 各自的服务与隐私政策约束。提交前请移除姓名、联系方式、账号、地址等可识别身份的信息。
 
-GitHub Pages 部署完成后，可通过以下地址访问：
+AI 分析失败时，页面会明确显示“使用基础分析”选项。基础分析在浏览器本机按显式规则运行，不会把文本发送到 AI 接口，也不会伪装成 AI 结果。
 
-https://lujia7484.github.io/abc-analysis-tool/
+每次提交最多 `20,000` 个字符。服务按 IP 每小时最多接受五次有效请求；限流标识是加盐哈希，不保存原始 IP，并由 Durable Object 的 alarm 清理过期窗口。
+
+## 功能
+
+- 学员可以编辑生成结果中的 A、B、C，并保存修订状态。
+- 原文证据和原文位置为只读，避免把推断改写成原始材料。
+- 当前草稿可导出为 JSON、CSV，或复制为可读文本；导出包含已保存的 A/B/C 修改。
+
+## 本地检查
+
+需要 Node.js `>=22.9`：
+
+```bash
+npm install
+npm test
+```
+
+## Worker 部署与配置
+
+公开配置位于 `worker/wrangler.jsonc`。部署命令：
+
+```bash
+npx wrangler deploy --config worker/wrangler.jsonc
+```
+
+生产环境只需要以下两个 secret 名称：
+
+- `DEEPSEEK_API_KEY`
+- `RATE_LIMIT_SALT`
+
+请在 Cloudflare Dashboard 的 Worker 设置中安全录入，或使用 Wrangler 的隐藏交互输入；不要把值写入命令、README、Git、`.env`、`.dev.vars`、终端日志或聊天记录：
+
+```bash
+npx wrangler secret put DEEPSEEK_API_KEY --config worker/wrangler.jsonc
+npx wrangler secret put RATE_LIMIT_SALT --config worker/wrangler.jsonc
+```
+
+密钥疑似泄露、成员变更或按内部周期到期时，应在 DeepSeek 和 Cloudflare 侧轮换相应 secret，然后重新部署并验证。DeepSeek API 的账户、额度、账单和用量监控由部署者负责。

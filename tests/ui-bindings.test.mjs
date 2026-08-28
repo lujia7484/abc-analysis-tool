@@ -30,7 +30,7 @@ test("collectRequiredElements collects every required index control and reports 
 test("index contains every required ID, trusted endpoint meta, and module script", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
   for (const id of Object.values(REQUIRED_ELEMENT_IDS)) assert.match(html, new RegExp(`id=["']${id}["']`));
-  assert.match(html, /<meta name="abc-api-endpoint" content="">/);
+  assert.match(html, /<meta name="abc-api-endpoint" content="https:\/\/abc-analysis-api\.codex-ai-abc-workbench\.workers\.dev\/analyze">/);
   assert.match(html, /<script type="module" src="\.\/src\/app\.mjs"><\/script>/);
 });
 

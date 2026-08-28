@@ -1,5 +1,6 @@
 let apiEndpoint = "";
 
+const PRODUCTION_ENDPOINT = "https://abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze";
 const GENERIC_SERVICE_ERROR = "AI 分析服务暂时不可用，请稍后重试";
 const INVALID_RESPONSE_ERROR = "AI 分析服务返回数据无效，请稍后重试";
 const MAX_RESPONSE_BYTES = 256 * 1024;
@@ -23,26 +24,9 @@ const ERROR_MESSAGES = new Map([
 ]);
 
 function normalizeEndpoint(value) {
-  if (typeof value !== "string" || value.trim() === "") return null;
-  try {
-    const parsed = new URL(value);
-    const suffix = ".workers.dev";
-    if (
-      parsed.protocol !== "https:" ||
-      !parsed.hostname.endsWith(suffix) ||
-      parsed.hostname.length <= suffix.length ||
-      (parsed.port !== "" && parsed.port !== "443") ||
-      parsed.pathname !== "/analyze" ||
-      parsed.username !== "" ||
-      parsed.password !== "" ||
-      parsed.search !== "" ||
-      parsed.hash !== ""
-    ) return null;
-    parsed.port = "";
-    return parsed.href;
-  } catch {
-    return null;
-  }
+  return typeof value === "string" && value === PRODUCTION_ENDPOINT
+    ? PRODUCTION_ENDPOINT
+    : null;
 }
 
 function messageForErrorCode(payload) {
