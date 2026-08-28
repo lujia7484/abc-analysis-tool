@@ -2,6 +2,13 @@ let apiEndpoint = "";
 
 const GENERIC_SERVICE_ERROR = "AI 分析服务暂时不可用，请稍后重试";
 const INVALID_RESPONSE_ERROR = "AI 分析服务返回数据无效，请稍后重试";
+const ERROR_MESSAGES = Object.freeze({
+  RATE_LIMITED: "请求过于频繁，请稍后重试",
+  VALIDATION_ERROR: "提交内容无效，请检查后重试",
+  CONFIG_ERROR: "AI 分析服务配置异常，请联系管理员",
+  AI_UPSTREAM_ERROR: GENERIC_SERVICE_ERROR,
+  BODY_TOO_LARGE: "提交内容过长，请精简后重试",
+});
 
 function isValidEndpoint(value) {
   if (typeof value !== "string" || value.trim() === "") return false;
@@ -14,15 +21,8 @@ function isValidEndpoint(value) {
   }
 }
 
-function safeServerMessage(payload, fallback = GENERIC_SERVICE_ERROR) {
-  const message = payload?.message;
-  if (typeof message !== "string") return fallback;
-
-  const trimmed = message.trim();
-  if (trimmed.length === 0 || trimmed.length > 200 || /[\u0000-\u001f\u007f]/.test(trimmed)) {
-    return fallback;
-  }
-  return trimmed;
+function messageForErrorCode(payload) {
+  return ERROR_MESSAGES[payload?.code] ?? GENERIC_SERVICE_ERROR;
 }
 
 export function setApiEndpoint(url) {
@@ -76,10 +76,10 @@ export async function analyzeWithAI(input, fetchImpl = fetch, timeoutMs = 55_000
     }
 
     if (!response.ok) {
-      throw new Error(safeServerMessage(payload));
+      throw new Error(messageForErrorCode(payload));
     }
     if (payload?.ok === false) {
-      throw new Error(safeServerMessage(payload));
+      throw new Error(messageForErrorCode(payload));
     }
     if (payload?.ok !== true || payload.mode !== "ai" || !Array.isArray(payload.scenes)) {
       throw new Error(INVALID_RESPONSE_ERROR);

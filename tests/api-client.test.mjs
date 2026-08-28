@@ -69,26 +69,52 @@ test("analyzeWithAI returns a fresh object containing only mode and scenes", asy
   assert.notEqual(result.scenes, payload.scenes);
 });
 
-test("non-2xx exposes a reasonable server message but never raw response content", async () => {
+test("non-2xx maps a known server code to a local message", async () => {
   setApiEndpoint(endpoint);
   await assert.rejects(
-    analyzeWithAI({}, async () => jsonResponse({ message: "今日请求次数已用完", code: "RATE_LIMIT", raw: "private transcript" }, { status: 429 })),
+    analyzeWithAI({}, async () => jsonResponse({ message: "private transcript", code: "RATE_LIMITED" }, { status: 429 })),
     (error) => {
-      assert.match(error.message, /今日请求次数已用完/);
-      assert.doesNotMatch(error.message, /private transcript|RATE_LIMIT|429|workers\.dev/);
+      assert.equal(error.message, "请求过于频繁，请稍后重试");
+      assert.doesNotMatch(error.message, /private transcript|RATE_LIMITED|429|workers\.dev/);
       return true;
     },
   );
 });
 
-test("non-2xx rejects unsafe or oversized server messages with a generic error", async () => {
+test("known error codes use only locally defined Chinese messages", async () => {
   setApiEndpoint(endpoint);
-  for (const message of ["x".repeat(300), { nested: true }]) {
+  const cases = [
+    ["RATE_LIMITED", "请求过于频繁，请稍后重试"],
+    ["VALIDATION_ERROR", "提交内容无效，请检查后重试"],
+    ["CONFIG_ERROR", "AI 分析服务配置异常，请联系管理员"],
+    ["AI_UPSTREAM_ERROR", "AI 分析服务暂时不可用，请稍后重试"],
+    ["BODY_TOO_LARGE", "提交内容过长，请精简后重试"],
+  ];
+  for (const [code, expected] of cases) {
     await assert.rejects(
-      analyzeWithAI({}, async () => jsonResponse({ message, raw: "SECRET_BODY" }, { status: 500 })),
+      analyzeWithAI({}, async () => jsonResponse({ code, message: "DO_NOT_EXPOSE" }, { status: 400 })),
       (error) => {
-        assert.match(error.message, /AI 分析服务暂时不可用/);
-        assert.doesNotMatch(error.message, /SECRET_BODY|xxx/);
+        assert.equal(error.message, expected);
+        assert.doesNotMatch(error.message, /DO_NOT_EXPOSE/);
+        return true;
+      },
+    );
+  }
+});
+
+test("unknown errors never leak endpoint, stack, or transcript from payload.message", async () => {
+  setApiEndpoint(endpoint);
+  const leaks = [
+    "Failed at https://internal.example.com/analyze",
+    "Error: upstream failed at worker.js:42",
+    "Transcript excerpt: 孩子说我不想去学校",
+  ];
+  for (const message of leaks) {
+    await assert.rejects(
+      analyzeWithAI({}, async () => jsonResponse({ code: "UNKNOWN", message }, { status: 500 })),
+      (error) => {
+        assert.equal(error.message, "AI 分析服务暂时不可用，请稍后重试");
+        assert.doesNotMatch(error.message, /internal\.example|worker\.js|孩子说|不想去学校/);
         return true;
       },
     );
@@ -107,13 +133,13 @@ test("invalid JSON throws a safe user-facing error", async () => {
   );
 });
 
-test("ok:false uses only a safe short message", async () => {
+test("ok:false maps a known code without using its free-form message", async () => {
   setApiEndpoint(endpoint);
   await assert.rejects(
-    analyzeWithAI({}, async () => jsonResponse({ ok: false, message: "请稍后再试", code: "INTERNAL_DETAIL" })),
+    analyzeWithAI({}, async () => jsonResponse({ ok: false, message: "private stack", code: "CONFIG_ERROR" })),
     (error) => {
-      assert.equal(error.message, "请稍后再试");
-      assert.doesNotMatch(error.message, /INTERNAL_DETAIL/);
+      assert.equal(error.message, "AI 分析服务配置异常，请联系管理员");
+      assert.doesNotMatch(error.message, /private stack|CONFIG_ERROR/);
       return true;
     },
   );
