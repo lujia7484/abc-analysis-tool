@@ -12,13 +12,13 @@
 
 ## 隐私与使用边界
 
-网页和我们的 Worker 代码不会有意持久化保存逐字稿或 AI 分析结果。Worker 只保存加盐哈希后的限流计数和重置时间元数据，最长保留至当前一小时限流窗口结束；不会在该限流状态中保存原始 IP、逐字稿或 AI 结果。
+网页和我们的 Worker 代码不会有意持久化保存逐字稿或 AI 分析结果。Worker 只保存加盐哈希后的限流计数和重置时间元数据，并计划在对应的一小时限流窗口到期时通过 Cloudflare alarm 删除。Cloudflare alarm 可能晚于计划时间执行，因此无法保证准确删除时间；限流状态中不保存原始 IP、逐字稿或 AI 结果。
 
 选择 AI 分析时，请求会经过 Cloudflare 基础设施发送给 DeepSeek。Cloudflare 和 DeepSeek 可能依据各自政策处理、记录或保留相关数据；这些第三方行为不由我们控制，我们也不对其保留期限作出承诺。请阅读 [Cloudflare 隐私政策](https://www.cloudflare.com/privacypolicy/) 和 [DeepSeek 隐私政策](https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html)。提交前请移除姓名、联系方式、账号、地址等身份识别信息，以及不需要分析的敏感数据。
 
 AI 分析失败时，页面会明确显示“使用基础分析”选项。基础分析在浏览器本机按显式规则运行，不会把文本发送到 AI 接口，也不会伪装成 AI 结果。
 
-每次提交最多 `20,000` 个字符。服务按 IP 每小时最多接受五次有效请求；限流标识是加盐哈希，不保存原始 IP，并由 Durable Object 的 alarm 清理过期窗口。
+每次提交最多 `20,000` 个字符。服务按 IP 每小时最多接受五次有效请求；限流标识是加盐哈希，不保存原始 IP，并由 Durable Object alarm 安排清理过期窗口。
 
 ## 功能
 
@@ -53,6 +53,12 @@ npx wrangler deploy --config worker/wrangler.jsonc
 ```bash
 npx wrangler secret put DEEPSEEK_API_KEY --config worker/wrangler.jsonc
 npx wrangler secret put RATE_LIMIT_SALT --config worker/wrangler.jsonc
+```
+
+`RATE_LIMIT_SALT` 必须是由 32 个密码学安全随机字节生成的、恰好 64 个十六进制字符。可以在 Cloudflare Dashboard 中直接粘贴由可信密码管理器或安全随机数工具生成的值，不要保存该值。也可以在本地用 Node.js 直接生成并通过管道写入 Wrangler；下列命令不会把值写入磁盘或命令参数：
+
+```bash
+node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))" | npx wrangler secret put RATE_LIMIT_SALT --config worker/wrangler.jsonc
 ```
 
 密钥疑似泄露、成员变更或按内部周期到期时，应在 DeepSeek 和 Cloudflare 侧轮换相应 secret，然后重新部署并验证。DeepSeek API 的账户、额度、账单和用量监控由部署者负责。

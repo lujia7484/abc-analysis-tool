@@ -447,8 +447,12 @@ git commit -m "chore: configure Cloudflare deployment"
 ### Task 7: Connect, Verify, and Publish
 
 **Files:**
+- Modify: `index.html`
 - Modify: `src/api-client.mjs`
+- Modify: `tests/api-client.test.mjs`
+- Modify: `tests/ui-bindings.test.mjs`
 - Modify: `README.md`
+- Modify: `docs/superpowers/plans/2026-08-28-ai-abc-workbench-implementation.md`
 
 - [ ] **Step 1: Set and pin the public Worker endpoint**
 
@@ -479,7 +483,7 @@ Document the public page, Worker endpoint, privacy behavior, DeepSeek billing re
 - [ ] **Step 7: Commit locally, then publish only after local approval**
 
 ```bash
-git add src/api-client.mjs README.md
+git add index.html src/api-client.mjs tests/api-client.test.mjs tests/ui-bindings.test.mjs README.md docs/superpowers/plans/2026-08-28-ai-abc-workbench-implementation.md
 git commit -m "docs: document AI deployment and privacy"
 ```
 
