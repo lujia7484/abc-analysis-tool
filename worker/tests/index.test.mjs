@@ -29,13 +29,24 @@ function deepSeekResponse(content = JSON.stringify({ scenes: [validScene()] }), 
 function createStorage() {
   const values = new Map();
   let transactionTail = Promise.resolve();
+  let scheduledAlarm = null;
   return {
     values,
+    get scheduledAlarm() { return scheduledAlarm; },
     async get(key) {
       return values.get(key);
     },
     async put(key, value) {
       values.set(key, value);
+    },
+    async deleteAll() {
+      values.clear();
+    },
+    async setAlarm(timestamp) {
+      scheduledAlarm = timestamp;
+    },
+    async deleteAlarm() {
+      scheduledAlarm = null;
     },
     transaction(callback) {
       const result = transactionTail.then(() => callback(this));
@@ -70,7 +81,7 @@ function env(overrides = {}) {
   return {
     ALLOWED_ORIGIN: ORIGIN,
     DEEPSEEK_API_KEY: API_KEY,
-    RATE_LIMIT_SALT: 'rate-limit-salt-at-least-32-bytes',
+    RATE_LIMIT_SALT: 'a'.repeat(64),
     DEEPSEEK_MODEL: 'deepseek-chat',
     RATE_LIMITER: createDurableNamespace(),
     ...overrides,
@@ -174,7 +185,19 @@ test('RateLimiter resets count after its one-hour window', async () => {
   const metadata = storage.values.get('limit');
   assert.equal(metadata.count, 1);
   assert.ok(metadata.resetAt > Date.now());
+  assert.equal(storage.scheduledAlarm, metadata.resetAt);
   assert.deepEqual(Object.keys(metadata).sort(), ['count', 'resetAt']);
+});
+
+test('RateLimiter alarm removes stored metadata and clears the scheduled alarm', async () => {
+  const storage = createStorage();
+  const limiter = new RateLimiter({ storage });
+  await limiter.fetch(new Request('https://limiter/admit', { method: 'POST' }));
+  assert.ok(storage.values.has('limit'));
+  assert.ok(storage.scheduledAlarm);
+  await limiter.alarm();
+  assert.equal(storage.values.size, 0);
+  assert.equal(storage.scheduledAlarm, null);
 });
 
 test('oversized Content-Length is rejected before rate limiter and upstream', async () => {
@@ -273,12 +296,17 @@ test('missing required configuration fails closed without upstream call', async 
   }
 });
 
-test('RATE_LIMIT_SALT shorter than 32 characters fails closed', async () => {
-  let called = false;
-  const result = await json(await handleRequest(request(), env({ RATE_LIMIT_SALT: 'too-short' }), async () => { called = true; }));
-  assert.equal(result.response.status, 500);
-  assert.equal(result.body.code, 'CONFIG_ERROR');
-  assert.equal(called, false);
+test('RATE_LIMIT_SALT requires exactly 64 hexadecimal characters', async () => {
+  for (const salt of ['too-short', 'a'.repeat(63), 'a'.repeat(65), 'g'.repeat(64), `${'a'.repeat(63)}-`]) {
+    let called = false;
+    const result = await json(await handleRequest(request(), env({ RATE_LIMIT_SALT: salt }), async () => { called = true; }));
+    assert.equal(result.response.status, 500);
+    assert.equal(result.body.code, 'CONFIG_ERROR');
+    assert.equal(called, false);
+  }
+  const validUppercaseSalt = 'ABCDEF0123456789'.repeat(4);
+  const result = await handleRequest(request(), env({ RATE_LIMIT_SALT: validUppercaseSalt }), async () => deepSeekResponse());
+  assert.equal(result.status, 200);
 });
 
 test('missing client IP fails closed without upstream call', async () => {
@@ -290,7 +318,7 @@ test('missing client IP fails closed without upstream call', async () => {
 });
 
 test('responses and errors never expose transcript, upstream body, stack, API key, salt, or raw IP', async () => {
-  const secrets = [TRANSCRIPT, RAW_UPSTREAM, API_KEY, 'rate-limit-salt-at-least-32-bytes', '203.0.113.7', 'stack-marker'];
+  const secrets = [TRANSCRIPT, RAW_UPSTREAM, API_KEY, 'a'.repeat(64), '203.0.113.7', 'stack-marker'];
   const cases = [
     handleRequest(request({ body: '{broken' }), env(), assert.fail),
     handleRequest(request(), env(), async () => new Response(`${RAW_UPSTREAM} ${API_KEY}`, { status: 500 })),

@@ -39,7 +39,7 @@ function hasRequiredConfig(env) {
       && typeof env.DEEPSEEK_API_KEY === 'string'
       && env.DEEPSEEK_API_KEY
       && typeof env.RATE_LIMIT_SALT === 'string'
-      && env.RATE_LIMIT_SALT.length >= 32
+      && /^[0-9a-f]{64}$/i.test(env.RATE_LIMIT_SALT)
       && env.RATE_LIMITER
       && typeof env.RATE_LIMITER.idFromName === 'function'
       && typeof env.RATE_LIMITER.get === 'function',
@@ -138,17 +138,22 @@ export class RateLimiter {
 
   async fetch(request) {
     if (request.method !== 'POST') return new Response(null, { status: 405 });
-    const allowed = await this.storage.transaction(async (transaction) => {
+    const admission = await this.storage.transaction(async (transaction) => {
       const now = Date.now();
       const current = await transaction.get('limit');
-      const active = current && Number.isFinite(current.resetAt) && current.resetAt > now
-        ? current
-        : { count: 0, resetAt: now + LIMIT_WINDOW_MS };
-      if (active.count >= REQUEST_LIMIT) return false;
+      const windowIsActive = current && Number.isFinite(current.resetAt) && current.resetAt > now;
+      const active = windowIsActive ? current : { count: 0, resetAt: now + LIMIT_WINDOW_MS };
+      if (active.count >= REQUEST_LIMIT) return { allowed: false, scheduleAt: null };
       await transaction.put('limit', { count: active.count + 1, resetAt: active.resetAt });
-      return true;
+      return { allowed: true, scheduleAt: windowIsActive ? null : active.resetAt };
     });
-    return Response.json({ allowed });
+    if (admission.scheduleAt !== null) await this.storage.setAlarm(admission.scheduleAt);
+    return Response.json({ allowed: admission.allowed });
+  }
+
+  async alarm() {
+    await this.storage.deleteAll();
+    await this.storage.deleteAlarm();
   }
 }
 
