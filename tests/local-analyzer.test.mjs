@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { analyzeLocally, parseTranscript } from "../src/local-analyzer.mjs";
+import { EVIDENCE_LEVELS, RISK_TYPES, SCENE_LIMITS } from "../src/scene-contract.mjs";
 
 test("parses a timestamped anonymous utterance", () => {
   assert.deepEqual(parseTranscript("[00:12] 因为今天调整了安排"), [
@@ -44,11 +45,7 @@ test("returns normalized basic scenes with existing evidence and risk labels", (
         a: "家长（00:01）：因为今天调整了安排",
         b: "孩子（00:08）：我不想继续，还摔东西",
         c: "老师（00:15）：后来情绪缓和了",
-        sourceQuote: [
-          "家长（00:01）：因为今天调整了安排",
-          "孩子（00:08）：我不想继续，还摔东西",
-          "老师（00:15）：后来情绪缓和了",
-        ].join("\n"),
+        sourceQuote: "[00:01] 家长：因为今天调整了安排",
         sourceLocation: "00:01-00:15",
         evidenceLevel: "高",
         riskType: "暴力",
@@ -75,11 +72,7 @@ test("normalizes an untimestamped scene without inventing a source range", () =>
         a: "家长（无时间戳）：因为今天调整了安排",
         b: "孩子（无时间戳）：我不想继续",
         c: "老师（无时间戳）：后来情绪缓和了",
-        sourceQuote: [
-          "家长（无时间戳）：因为今天调整了安排",
-          "孩子（无时间戳）：我不想继续",
-          "老师（无时间戳）：后来情绪缓和了",
-        ].join("\n"),
+        sourceQuote: "家长：因为今天调整了安排",
         sourceLocation: "无时间戳",
         evidenceLevel: "高",
         riskType: "无",
@@ -88,6 +81,33 @@ test("normalizes an untimestamped scene without inventing a source range", () =>
       },
     ],
   });
+});
+
+test("skips a local candidate that exceeds the shared scene limits", () => {
+  const oversized = "因为" + "字".repeat(SCENE_LIMITS.a);
+  const result = analyzeLocally(`${oversized}\n我拒绝继续\n后来暂停`);
+  assert.deepEqual(result, { mode: "basic", scenes: [] });
+});
+
+test("every returned local scene satisfies the shared contract and stays grounded", () => {
+  const transcript = [
+    "[00:01] 家长：因为今天调整了安排",
+    "[00:08] 孩子：我不想继续，还摔东西",
+    "[00:15] 老师：后来情绪缓和了",
+  ].join("\n");
+  const { scenes } = analyzeLocally(transcript);
+  assert.ok(scenes.length > 0);
+  for (const scene of scenes) {
+    for (const field of ["title", "a", "b", "c", "sourceQuote", "sourceLocation", "limitations"]) {
+      assert.equal(typeof scene[field], "string");
+      assert.ok(scene[field].length <= SCENE_LIMITS[field], field);
+    }
+    assert.ok(EVIDENCE_LEVELS.includes(scene.evidenceLevel));
+    assert.ok(RISK_TYPES.includes(scene.riskType));
+    assert.ok(transcript.includes(scene.sourceQuote));
+    assert.match(scene.id, /^scene-\d+$/);
+    assert.equal(scene.revised, false);
+  }
 });
 
 test("maps fallback risk keywords only to the shared enum", () => {

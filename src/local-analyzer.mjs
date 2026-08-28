@@ -1,4 +1,4 @@
-import { createSceneId } from "./scene-contract.mjs";
+import { normalizeScene, SCENE_LIMITS } from "./scene-contract.mjs";
 
 const ANCHOR = [
   "因为", "由于", "作业没", "没做完", "老师", "家长", "提醒", "要求",
@@ -49,11 +49,13 @@ export function parseTranscript(raw) {
     const text = speakerMatch ? speakerMatch[2].trim() : body;
 
     if (text) {
-      utterances.push({
+      const utterance = {
         timestamp: timestamp || "无时间戳",
         speaker,
         text,
-      });
+      };
+      Object.defineProperty(utterance, "sourceLine", { value: line });
+      utterances.push(utterance);
     }
   }
 
@@ -97,7 +99,7 @@ function formatSourceLocation(start, end) {
   return `${timestamps[0]}-${timestamps[1]}`;
 }
 
-function buildScenes(utterances) {
+function buildScenes(utterances, sourceTranscript) {
   const scenes = [];
   const maxLookahead = 9;
   let index = 0;
@@ -137,13 +139,12 @@ function buildScenes(utterances) {
       cItems.length ? "" : "未识别到明确后果",
     ].filter(Boolean).join("；");
 
-    scenes.push({
-      id: createSceneId(scenes.length),
+    const candidate = {
       title: "行为循环场景",
       a: a || "未标注",
       b: b || "待补充（未识别到明确行为）",
       c: c || "待补充（未识别到明确后果）",
-      sourceQuote,
+      sourceQuote: utterances[aIndex].sourceLine,
       sourceLocation: formatSourceLocation(
         utterances[aIndex].timestamp,
         utterances[cIndex]?.timestamp || utterances[bIndex]?.timestamp,
@@ -155,11 +156,16 @@ function buildScenes(utterances) {
       ),
       riskType: detectRisk(sourceQuote),
       limitations,
-      revised: false,
-    });
+    };
+
+    try {
+      scenes.push(normalizeScene(candidate, scenes.length, sourceTranscript));
+    } catch {
+      // A single malformed or oversized candidate must not break local analysis.
+    }
 
     index = Math.max(aIndex + 1, cIndex + 1, bIndex + 1);
-    if (scenes.length === 20) break;
+    if (scenes.length === SCENE_LIMITS.maxScenes) break;
   }
 
   return scenes;
@@ -168,6 +174,6 @@ function buildScenes(utterances) {
 export function analyzeLocally(raw) {
   return {
     mode: "basic",
-    scenes: buildScenes(parseTranscript(raw)),
+    scenes: buildScenes(parseTranscript(raw), raw),
   };
 }
