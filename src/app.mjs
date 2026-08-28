@@ -1,10 +1,10 @@
 import { analyzeWithAI, setApiEndpoint } from "./api-client.mjs";
 import { analyzeLocally } from "./local-analyzer.mjs";
-import { createAnalysisController, validateAnalysisInput } from "./analysis-controller.mjs";
+import { createAnalysisController, safeAnalysisErrorMessage, validateAnalysisInput } from "./analysis-controller.mjs";
 import { buildExportPayload, buildReadable, toCsv, updateScene } from "./result-model.mjs";
+import { attachTopLevelListeners, collectRequiredElements, setLoadingDisabled } from "./ui-bindings.mjs";
 
-const $ = (id) => document.getElementById(id);
-const el = { nickname: $("nickname"), date: $("session-date"), transcript: $("transcript"), consent: $("privacy-consent"), analyze: $("analyze-button"), clear: $("clear-button"), sample: $("sample-button"), basic: $("basic-button"), message: $("form-message"), status: $("status-region"), summary: $("summary"), risk: $("risk-support"), results: $("results"), exports: $("export-section"), json: $("json-button"), csv: $("csv-button"), copy: $("copy-button"), resultColumn: $("result-column"), resultTitle: $("result-title") };
+const el = collectRequiredElements(document);
 let state = { status: "empty", mode: null, scenes: [], error: "", generatedAt: null, analysisContext: null };
 let endpointReady = false;
 // Trust boundary: the AI endpoint may only come from this static deployment-owned meta tag.
@@ -61,7 +61,7 @@ function renderCard(scene, index) {
 function render(announcement = "") {
   const success = state.status === "success"; const hasResults = success && state.scenes.length > 0;
   const loading = state.status === "loading";
-  [el.nickname, el.date, el.transcript, el.consent, el.sample, el.clear, el.analyze].forEach((item) => { item.disabled = loading; });
+  setLoadingDisabled(el, loading);
   el.basic.hidden = state.status !== "error" || !el.transcript.value.trim(); el.summary.hidden = !success; el.risk.hidden = true; el.exports.hidden = !hasResults;
   [el.json, el.csv, el.copy].forEach((item) => { item.disabled = !hasResults; }); el.results.replaceChildren();
   if (state.status === "empty") setStatus("empty", "你的观察草稿会出现在这里。先在左侧写下一段经历。");
@@ -84,7 +84,7 @@ async function analyzeAI() {
   state = { status: "loading", mode: null, scenes: [], error: "", generatedAt: null, analysisContext: null }; render();
   const outcome = await controller.submit(context);
   if (!outcome.committed) return;
-  if (outcome.error) { state = { status: "error", mode: null, scenes: [], error: "AI 分析暂时没有完成。可以重试，或选择不发送文本的基础分析。", generatedAt: null, analysisContext: null }; render(); return; }
+  if (outcome.error) { state = { status: "error", mode: null, scenes: [], error: safeAnalysisErrorMessage(outcome.error), generatedAt: null, analysisContext: null }; render(); return; }
   const result = outcome.result;
   state = { status: "success", mode: result.mode, scenes: result.scenes, error: "", generatedAt: new Date().toISOString(), analysisContext: result.analysisContext }; render(); scrollAndFocusResults();
 }
@@ -92,10 +92,21 @@ async function analyzeAI() {
 function analyzeBasic() { if (!el.transcript.value.trim()) return; controller.invalidate(); const analysisContext = { nickname: el.nickname.value.trim(), date: el.date.value }; const result = analyzeLocally(el.transcript.value.trim()); state = { status: "success", mode: result.mode, scenes: result.scenes, error: "", generatedAt: new Date().toISOString(), analysisContext }; render(); scrollAndFocusResults(); }
 function download(content, type, filename) { const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement("a"); link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 0); }
 
-el.analyze.addEventListener("click", analyzeAI); el.basic.addEventListener("click", analyzeBasic);
-el.sample.addEventListener("click", () => { el.transcript.value = SAMPLE; el.message.textContent = ""; });
-el.clear.addEventListener("click", () => { const hasData = el.nickname.value || el.date.value || el.transcript.value || el.consent.checked || state.status !== "empty"; if (hasData && !window.confirm("要清空输入和当前观察草稿吗？")) return; controller.invalidate(); el.nickname.value = ""; el.date.value = ""; el.transcript.value = ""; el.consent.checked = false; el.message.textContent = ""; state = { status: "empty", mode: null, scenes: [], error: "", generatedAt: null, analysisContext: null }; render(); });
-el.json.addEventListener("click", () => download(JSON.stringify(payload(), null, 2), "application/json;charset=utf-8", "abc-observation-draft.json"));
-el.csv.addEventListener("click", () => download(toCsv(payload()), "text/csv;charset=utf-8", "abc-observation-draft.csv"));
-el.copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(buildReadable(payload())); el.message.textContent = "已复制当前观察草稿。"; } catch { el.message.textContent = "复制失败，请检查浏览器的剪贴板权限后重试。"; } });
+function fillSample() { el.transcript.value = SAMPLE; el.message.textContent = ""; }
+function handleInput() { el.message.textContent = ""; }
+function clearWorkbench() { const hasData = el.nickname.value || el.date.value || el.transcript.value || el.consent.checked || state.status !== "empty"; if (hasData && !window.confirm("要清空输入和当前观察草稿吗？")) return; controller.invalidate(); el.nickname.value = ""; el.date.value = ""; el.transcript.value = ""; el.consent.checked = false; el.message.textContent = ""; state = { status: "empty", mode: null, scenes: [], error: "", generatedAt: null, analysisContext: null }; render(); }
+function exportJson() { download(JSON.stringify(payload(), null, 2), "application/json;charset=utf-8", "abc-observation-draft.json"); }
+function exportCsv() { download(toCsv(payload()), "text/csv;charset=utf-8", "abc-observation-draft.csv"); }
+async function copyReadable() { try { await navigator.clipboard.writeText(buildReadable(payload())); el.message.textContent = "已复制当前观察草稿。"; } catch { el.message.textContent = "复制失败，请检查浏览器的剪贴板权限后重试。"; } }
+
+attachTopLevelListeners(el, {
+  onAnalyze: analyzeAI,
+  onFallback: analyzeBasic,
+  onClear: clearWorkbench,
+  onSample: fillSample,
+  onInput: handleInput,
+  onExportJson: exportJson,
+  onExportCsv: exportCsv,
+  onCopy: copyReadable,
+});
 render();

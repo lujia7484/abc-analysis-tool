@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createAnalysisController, validateAnalysisInput } from "../src/analysis-controller.mjs";
+import { createAnalysisController, safeAnalysisErrorMessage, validateAnalysisInput } from "../src/analysis-controller.mjs";
 
 function deferred() {
   let resolve;
@@ -14,6 +14,20 @@ test("validation requires transcript text and consent", () => {
   assert.equal(validateAnalysisInput({ transcript: "", consent: true }), "请先填写经历或逐字稿。");
   assert.equal(validateAnalysisInput({ transcript: "经历", consent: false }), "请阅读并勾选隐私说明后再使用 AI 分析。");
   assert.equal(validateAnalysisInput({ transcript: " 经历 ", consent: true }), "");
+});
+
+test("safe API failure reasons are preserved and unsafe messages fall back", () => {
+  for (const message of [
+    "请求过于频繁，请稍后重试",
+    "AI 分析超时，请稍后重试",
+    "提交内容过长，请精简后重试",
+  ]) assert.equal(safeAnalysisErrorMessage(new Error(message)), message);
+
+  const fallback = "AI 分析暂时没有完成。可以重试，或选择不发送文本的基础分析。";
+  assert.equal(safeAnalysisErrorMessage("请求失败"), fallback);
+  assert.equal(safeAnalysisErrorMessage({ message: "伪造消息" }), fallback);
+  assert.equal(safeAnalysisErrorMessage(new Error(" ")), fallback);
+  assert.equal(safeAnalysisErrorMessage(new Error("x".repeat(201))), fallback);
 });
 
 test("duplicate analysis is suppressed while a request is loading", async () => {
