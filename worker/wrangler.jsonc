@@ -8,6 +8,20 @@
     "ALLOWED_ORIGIN": "https://lujia7484.github.io",
     "DEEPSEEK_MODEL": "deepseek-chat"
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RATE_LIMITER",
+        "class_name": "RateLimiter"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RateLimiter"]
+    }
+  ],
   "secrets": {
     "required": ["DEEPSEEK_API_KEY", "RATE_LIMIT_SALT"]
   }

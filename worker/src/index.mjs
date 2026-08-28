@@ -4,6 +4,10 @@ import { normalizeModelOutput, validateInput } from './schema.mjs';
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const REQUEST_LIMIT = 5;
 const TIMEOUT_MS = 45_000;
+const LIMIT_WINDOW_MS = 60 * 60 * 1000;
+export const MAX_BODY_BYTES = 80 * 1024;
+
+class BodyTooLargeError extends Error {}
 
 function corsHeaders(origin) {
   return {
@@ -35,10 +39,10 @@ function hasRequiredConfig(env) {
       && typeof env.DEEPSEEK_API_KEY === 'string'
       && env.DEEPSEEK_API_KEY
       && typeof env.RATE_LIMIT_SALT === 'string'
-      && env.RATE_LIMIT_SALT
-      && env.RATE_LIMIT_KV
-      && typeof env.RATE_LIMIT_KV.get === 'function'
-      && typeof env.RATE_LIMIT_KV.put === 'function',
+      && env.RATE_LIMIT_SALT.length >= 32
+      && env.RATE_LIMITER
+      && typeof env.RATE_LIMITER.idFromName === 'function'
+      && typeof env.RATE_LIMITER.get === 'function',
   );
 }
 
@@ -48,21 +52,51 @@ async function sha256Hex(value) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function consumeRateLimit(env, ip) {
+async function rateLimitAdmission(env, ip) {
   const hash = await sha256Hex(`${env.RATE_LIMIT_SALT}:${ip}`);
-  const utcHour = new Date().toISOString().slice(0, 13);
-  const key = `hour:${utcHour}:${hash}`;
-  const stored = await env.RATE_LIMIT_KV.get(key);
-  const parsed = Number.parseInt(stored ?? '0', 10);
-  const count = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-  if (count >= REQUEST_LIMIT) return false;
-  await env.RATE_LIMIT_KV.put(key, String(count + 1), { expirationTtl: 3600 });
-  return true;
+  const id = env.RATE_LIMITER.idFromName(hash);
+  const stub = env.RATE_LIMITER.get(id);
+  const response = await stub.fetch(new Request('https://rate-limiter/admit', { method: 'POST' }));
+  if (!response.ok) throw new Error('Rate limiter unavailable');
+  const result = await response.json();
+  if (typeof result?.allowed !== 'boolean') throw new Error('Rate limiter response invalid');
+  return result.allowed;
 }
 
-async function analyzeWithDeepSeek(input, env, fetchImpl) {
+async function readBoundedJson(request) {
+  const declaredLength = request.headers.get('Content-Length');
+  if (declaredLength !== null) {
+    const bytes = Number(declaredLength);
+    if (Number.isFinite(bytes) && bytes > MAX_BODY_BYTES) throw new BodyTooLargeError();
+  }
+
+  if (!request.body) return JSON.parse('');
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel();
+      throw new BodyTooLargeError();
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+}
+
+export async function callDeepSeek(input, env, fetchImpl = fetch, timeoutMs = TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(DEEPSEEK_URL, {
       method: 'POST',
@@ -85,11 +119,36 @@ async function analyzeWithDeepSeek(input, env, fetchImpl) {
     });
     if (!response.ok) throw new Error('Upstream request failed');
     const payload = await response.json();
-    const content = payload?.choices?.[0]?.message?.content;
+    const choice = payload?.choices?.[0];
+    if (choice?.finish_reason !== 'stop') throw new Error('Upstream completion incomplete');
+    const content = choice?.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw new Error('Upstream content missing');
     return normalizeModelOutput(JSON.parse(content));
+  } catch {
+    throw new Error('AI_UPSTREAM_ERROR');
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export class RateLimiter {
+  constructor(ctx) {
+    this.storage = ctx.storage;
+  }
+
+  async fetch(request) {
+    if (request.method !== 'POST') return new Response(null, { status: 405 });
+    const allowed = await this.storage.transaction(async (transaction) => {
+      const now = Date.now();
+      const current = await transaction.get('limit');
+      const active = current && Number.isFinite(current.resetAt) && current.resetAt > now
+        ? current
+        : { count: 0, resetAt: now + LIMIT_WINDOW_MS };
+      if (active.count >= REQUEST_LIMIT) return false;
+      await transaction.put('limit', { count: active.count + 1, resetAt: active.resetAt });
+      return true;
+    });
+    return Response.json({ allowed });
   }
 }
 
@@ -127,8 +186,11 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
 
   let input;
   try {
-    input = validateInput(await request.json());
-  } catch {
+    input = validateInput(await readBoundedJson(request));
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      return errorResponse(env.ALLOWED_ORIGIN, 413, 'PAYLOAD_TOO_LARGE', '请求内容超过大小限制。');
+    }
     return errorResponse(env.ALLOWED_ORIGIN, 400, 'INVALID_INPUT', '请求内容无效。');
   }
 
@@ -138,7 +200,7 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
   }
 
   try {
-    if (!(await consumeRateLimit(env, ip))) {
+    if (!(await rateLimitAdmission(env, ip))) {
       return errorResponse(env.ALLOWED_ORIGIN, 429, 'RATE_LIMITED', '分析次数已达上限，请一小时后再试。');
     }
   } catch {
@@ -146,7 +208,7 @@ export async function handleRequest(request, env, fetchImpl = fetch) {
   }
 
   try {
-    const { scenes } = await analyzeWithDeepSeek(input, env, fetchImpl);
+    const { scenes } = await callDeepSeek(input, env, fetchImpl);
     return jsonResponse(env.ALLOWED_ORIGIN, 200, null, null, { mode: 'ai', scenes });
   } catch {
     return errorResponse(env.ALLOWED_ORIGIN, 502, 'AI_UPSTREAM_ERROR', 'AI 分析服务暂时不可用，请稍后重试。');

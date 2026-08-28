@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { handleRequest } from '../src/index.mjs';
+import { RateLimiter, callDeepSeek, handleRequest } from '../src/index.mjs';
 
 const ORIGIN = 'https://lujia7484.github.io';
 const TRANSCRIPT = 'private transcript marker';
@@ -15,33 +15,53 @@ function validScene() {
   };
 }
 
-function deepSeekResponse(content = JSON.stringify({ scenes: [validScene()] })) {
+function deepSeekResponse(content = JSON.stringify({ scenes: [validScene()] }), finishReason = 'stop') {
   return new Response(JSON.stringify({
     id: 'chatcmpl-test',
     object: 'chat.completion',
     created: 0,
     model: 'deepseek-chat',
-    choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+    choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finishReason }],
     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 }
 
-function createKv(initial = 0) {
+function createStorage() {
   const values = new Map();
-  const puts = [];
-  if (initial) values.set('initial', String(initial));
+  let transactionTail = Promise.resolve();
   return {
     values,
-    puts,
     async get(key) {
-      return initial && values.size === 1 && values.has('initial')
-        ? values.get('initial')
-        : values.get(key) ?? null;
+      return values.get(key);
     },
-    async put(key, value, options) {
-      values.delete('initial');
+    async put(key, value) {
       values.set(key, value);
-      puts.push({ key, value, options });
+    },
+    transaction(callback) {
+      const result = transactionTail.then(() => callback(this));
+      transactionTail = result.catch(() => {});
+      return result;
+    },
+  };
+}
+
+function createDurableNamespace() {
+  const instances = new Map();
+  const names = [];
+  let fetchCalls = 0;
+  return {
+    names,
+    get fetchCalls() { return fetchCalls; },
+    idFromName(name) {
+      names.push(name);
+      return name;
+    },
+    get(id) {
+      if (!instances.has(id)) {
+        const limiter = new RateLimiter({ storage: createStorage() });
+        instances.set(id, { fetch: (request) => { fetchCalls += 1; return limiter.fetch(request); } });
+      }
+      return instances.get(id);
     },
   };
 }
@@ -50,9 +70,9 @@ function env(overrides = {}) {
   return {
     ALLOWED_ORIGIN: ORIGIN,
     DEEPSEEK_API_KEY: API_KEY,
-    RATE_LIMIT_SALT: 'rate-limit-salt',
+    RATE_LIMIT_SALT: 'rate-limit-salt-at-least-32-bytes',
     DEEPSEEK_MODEL: 'deepseek-chat',
-    RATE_LIMIT_KV: createKv(),
+    RATE_LIMITER: createDurableNamespace(),
     ...overrides,
   };
 }
@@ -120,9 +140,9 @@ test('malformed and schema-invalid JSON return 400 without calling upstream', as
   }
 });
 
-test('sixth valid request in a UTC hour returns 429 using hashed KV metadata', async () => {
-  const kv = createKv();
-  const testEnv = env({ RATE_LIMIT_KV: kv });
+test('sixth valid request in an hour returns 429 through a hash-keyed Durable Object', async () => {
+  const namespace = createDurableNamespace();
+  const testEnv = env({ RATE_LIMITER: namespace });
   let calls = 0;
   const fetchImpl = async () => { calls += 1; return deepSeekResponse(); };
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -132,10 +152,51 @@ test('sixth valid request in a UTC hour returns 429 using hashed KV metadata', a
   assert.equal(result.response.status, 429);
   assert.equal(result.body.code, 'RATE_LIMITED');
   assert.equal(calls, 5);
-  assert.equal(kv.puts.length, 5);
-  assert.deepEqual(kv.puts.at(-1).options, { expirationTtl: 3600 });
-  assert.match(kv.puts[0].key, /^hour:\d{4}-\d{2}-\d{2}T\d{2}:[0-9a-f]{64}$/);
-  assert.doesNotMatch(kv.puts[0].key, /203\.0\.113\.7|rate-limit-salt/);
+  assert.equal(namespace.fetchCalls, 6);
+  assert.match(namespace.names[0], /^[0-9a-f]{64}$/);
+  assert.doesNotMatch(namespace.names[0], /203\.0\.113\.7|rate-limit-salt/);
+});
+
+test('RateLimiter atomically admits only five concurrent requests', async () => {
+  const limiter = new RateLimiter({ storage: createStorage() });
+  const responses = await Promise.all(Array.from({ length: 12 }, () => limiter.fetch(new Request('https://limiter/admit', { method: 'POST' }))));
+  const results = await Promise.all(responses.map((response) => response.json()));
+  assert.equal(results.filter(({ allowed }) => allowed).length, 5);
+  assert.equal(results.filter(({ allowed }) => !allowed).length, 7);
+});
+
+test('RateLimiter resets count after its one-hour window', async () => {
+  const storage = createStorage();
+  const limiter = new RateLimiter({ storage });
+  storage.values.set('limit', { count: 5, resetAt: Date.now() - 1 });
+  const response = await limiter.fetch(new Request('https://limiter/admit', { method: 'POST' }));
+  assert.deepEqual(await response.json(), { allowed: true });
+  const metadata = storage.values.get('limit');
+  assert.equal(metadata.count, 1);
+  assert.ok(metadata.resetAt > Date.now());
+  assert.deepEqual(Object.keys(metadata).sort(), ['count', 'resetAt']);
+});
+
+test('oversized Content-Length is rejected before rate limiter and upstream', async () => {
+  const namespace = createDurableNamespace();
+  let upstreamCalled = false;
+  const oversized = request();
+  oversized.headers.set('content-length', String(80 * 1024 + 1));
+  const result = await json(await handleRequest(oversized, env({ RATE_LIMITER: namespace }), async () => { upstreamCalled = true; }));
+  assert.equal(result.response.status, 413);
+  assert.equal(namespace.fetchCalls, 0);
+  assert.equal(upstreamCalled, false);
+});
+
+test('oversized chunked body is rejected before rate limiter and upstream', async () => {
+  const namespace = createDurableNamespace();
+  let upstreamCalled = false;
+  const oversized = request({ body: JSON.stringify({ transcript: '字'.repeat(80 * 1024) }) });
+  assert.equal(oversized.headers.get('content-length'), null);
+  const result = await json(await handleRequest(oversized, env({ RATE_LIMITER: namespace }), async () => { upstreamCalled = true; }));
+  assert.equal(result.response.status, 413);
+  assert.equal(namespace.fetchCalls, 0);
+  assert.equal(upstreamCalled, false);
 });
 
 test('successful DeepSeek JSON output returns normalized AI scenes and correct request shape', async () => {
@@ -175,13 +236,16 @@ test('non-2xx DeepSeek response returns safe AI_UPSTREAM_ERROR', async () => {
   assert.equal(result.body.code, 'AI_UPSTREAM_ERROR');
 });
 
-test('DeepSeek timeout returns safe AI_UPSTREAM_ERROR', async () => {
-  const result = await json(await handleRequest(request(), env(), async (_url, init) => {
-    assert.ok(init.signal instanceof AbortSignal);
-    throw new DOMException('timed out with private detail', 'AbortError');
-  }));
-  assert.equal(result.response.status, 502);
-  assert.equal(result.body.code, 'AI_UPSTREAM_ERROR');
+test('callDeepSeek actually aborts a pending fetch at the injected timeout', async () => {
+  let aborted = false;
+  const pendingFetch = async (_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => {
+      aborted = true;
+      reject(new DOMException('private timeout detail', 'AbortError'));
+    }, { once: true });
+  });
+  await assert.rejects(callDeepSeek({ transcript: TRANSCRIPT }, env(), pendingFetch, 5), /AI_UPSTREAM_ERROR/);
+  assert.equal(aborted, true);
 });
 
 test('malformed model JSON returns safe AI_UPSTREAM_ERROR', async () => {
@@ -190,15 +254,31 @@ test('malformed model JSON returns safe AI_UPSTREAM_ERROR', async () => {
   assert.equal(result.body.code, 'AI_UPSTREAM_ERROR');
 });
 
+test('non-stop DeepSeek finish reasons return safe AI_UPSTREAM_ERROR despite valid JSON', async () => {
+  for (const reason of ['length', 'content_filter', 'insufficient_system_resource']) {
+    const result = await json(await handleRequest(request(), env(), async () => deepSeekResponse(undefined, reason)));
+    assert.equal(result.response.status, 502);
+    assert.equal(result.body.code, 'AI_UPSTREAM_ERROR');
+  }
+});
+
 test('missing required configuration fails closed without upstream call', async () => {
-  for (const missing of ['ALLOWED_ORIGIN', 'DEEPSEEK_API_KEY', 'RATE_LIMIT_SALT', 'RATE_LIMIT_KV']) {
+  for (const missing of ['ALLOWED_ORIGIN', 'DEEPSEEK_API_KEY', 'RATE_LIMIT_SALT', 'RATE_LIMITER']) {
     let called = false;
-    const testEnv = env({ [missing]: missing === 'RATE_LIMIT_KV' ? undefined : '' });
+    const testEnv = env({ [missing]: missing === 'RATE_LIMITER' ? undefined : '' });
     const result = await json(await handleRequest(request(), testEnv, async () => { called = true; }));
     assert.equal(result.response.status, 500);
     assert.equal(result.body.code, 'CONFIG_ERROR');
     assert.equal(called, false);
   }
+});
+
+test('RATE_LIMIT_SALT shorter than 32 characters fails closed', async () => {
+  let called = false;
+  const result = await json(await handleRequest(request(), env({ RATE_LIMIT_SALT: 'too-short' }), async () => { called = true; }));
+  assert.equal(result.response.status, 500);
+  assert.equal(result.body.code, 'CONFIG_ERROR');
+  assert.equal(called, false);
 });
 
 test('missing client IP fails closed without upstream call', async () => {
@@ -210,7 +290,7 @@ test('missing client IP fails closed without upstream call', async () => {
 });
 
 test('responses and errors never expose transcript, upstream body, stack, API key, salt, or raw IP', async () => {
-  const secrets = [TRANSCRIPT, RAW_UPSTREAM, API_KEY, 'rate-limit-salt', '203.0.113.7', 'stack-marker'];
+  const secrets = [TRANSCRIPT, RAW_UPSTREAM, API_KEY, 'rate-limit-salt-at-least-32-bytes', '203.0.113.7', 'stack-marker'];
   const cases = [
     handleRequest(request({ body: '{broken' }), env(), assert.fail),
     handleRequest(request(), env(), async () => new Response(`${RAW_UPSTREAM} ${API_KEY}`, { status: 500 })),
