@@ -7,6 +7,7 @@ import {
   attachTopLevelListeners,
   collectRequiredElements,
   setLoadingDisabled,
+  updateBasicButtonAvailability,
 } from "../src/ui-bindings.mjs";
 
 class FakeControl extends EventTarget {
@@ -41,6 +42,22 @@ test("setLoadingDisabled freezes all mutable submission controls and restores th
   for (const name of names) assert.equal(elements[name].disabled, true, name);
   setLoadingDisabled(elements, false);
   for (const name of names) assert.equal(elements[name].disabled, false, name);
+});
+
+test("basic analysis remains visible without consent and disables only for empty or loading input", () => {
+  const elements = collectRequiredElements(fakeDocument());
+  elements.transcript.value = "经历";
+  updateBasicButtonAvailability(elements, false);
+  assert.equal(elements.basic.hidden, false);
+  assert.equal(elements.basic.disabled, false);
+  elements.consent.checked = false;
+  updateBasicButtonAvailability(elements, true);
+  assert.equal(elements.basic.hidden, false);
+  assert.equal(elements.basic.disabled, true);
+  elements.transcript.value = "";
+  updateBasicButtonAvailability(elements, false);
+  assert.equal(elements.basic.hidden, false);
+  assert.equal(elements.basic.disabled, true);
 });
 
 test("top-level listeners invoke each injected handler exactly once", () => {

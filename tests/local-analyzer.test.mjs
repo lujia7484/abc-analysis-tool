@@ -39,7 +39,7 @@ test("returns normalized basic scenes with existing evidence and risk labels", (
     mode: "basic",
     scenes: [
       {
-        id: 1,
+        id: "scene-1",
         title: "行为循环场景",
         a: "家长（00:01）：因为今天调整了安排",
         b: "孩子（00:08）：我不想继续，还摔东西",
@@ -51,7 +51,7 @@ test("returns normalized basic scenes with existing evidence and risk labels", (
         ].join("\n"),
         sourceLocation: "00:01-00:15",
         evidenceLevel: "高",
-        riskType: "摔东西",
+        riskType: "暴力",
         limitations: "",
         revised: false,
       },
@@ -70,7 +70,7 @@ test("normalizes an untimestamped scene without inventing a source range", () =>
     mode: "basic",
     scenes: [
       {
-        id: 1,
+        id: "scene-1",
         title: "行为循环场景",
         a: "家长（无时间戳）：因为今天调整了安排",
         b: "孩子（无时间戳）：我不想继续",
@@ -88,4 +88,15 @@ test("normalizes an untimestamped scene without inventing a source range", () =>
       },
     ],
   });
+});
+
+test("maps fallback risk keywords only to the shared enum", () => {
+  const cases = [
+    ["离家", "离家"], ["自伤", "自伤"], ["轻生", "轻生"], ["打人", "暴力"],
+    ["摔东西", "暴力"], ["危险", "安全待确认"], ["无法确认安全", "安全待确认"],
+  ];
+  for (const [keyword, expected] of cases) {
+    const result = analyzeLocally(`因为被提醒\n我拒绝并${keyword}\n后来暂停`);
+    assert.equal(result.scenes[0].riskType, expected, keyword);
+  }
 });

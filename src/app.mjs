@@ -1,8 +1,8 @@
 import { analyzeWithAI, setApiEndpoint } from "./api-client.mjs";
 import { analyzeLocally } from "./local-analyzer.mjs";
-import { createAnalysisController, safeAnalysisErrorMessage, validateAnalysisInput } from "./analysis-controller.mjs";
+import { createAnalysisController, safeAnalysisErrorMessage, validateAnalysisInput, validateBasicAnalysisInput } from "./analysis-controller.mjs";
 import { buildExportPayload, buildReadable, toCsv, updateScene } from "./result-model.mjs";
-import { attachTopLevelListeners, collectRequiredElements, setLoadingDisabled } from "./ui-bindings.mjs";
+import { attachTopLevelListeners, collectRequiredElements, setLoadingDisabled, updateBasicButtonAvailability } from "./ui-bindings.mjs";
 
 const el = collectRequiredElements(document);
 let state = { status: "empty", mode: null, scenes: [], error: "", generatedAt: null, analysisContext: null };
@@ -62,7 +62,7 @@ function render(announcement = "") {
   const success = state.status === "success"; const hasResults = success && state.scenes.length > 0;
   const loading = state.status === "loading";
   setLoadingDisabled(el, loading);
-  el.basic.hidden = state.status !== "error" || !el.transcript.value.trim(); el.summary.hidden = !success; el.risk.hidden = true; el.exports.hidden = !hasResults;
+  updateBasicButtonAvailability(el, loading); el.summary.hidden = !success; el.risk.hidden = true; el.exports.hidden = !hasResults;
   [el.json, el.csv, el.copy].forEach((item) => { item.disabled = !hasResults; }); el.results.replaceChildren();
   if (state.status === "empty") setStatus("empty", "你的观察草稿会出现在这里。先在左侧写下一段经历。");
   if (state.status === "loading") setStatus("loading", "正在整理文字中的起因、行为与结果，请稍候……");
@@ -89,11 +89,11 @@ async function analyzeAI() {
   state = { status: "success", mode: result.mode, scenes: result.scenes, error: "", generatedAt: new Date().toISOString(), analysisContext: result.analysisContext }; render(); scrollAndFocusResults();
 }
 
-function analyzeBasic() { if (!el.transcript.value.trim()) return; controller.invalidate(); const analysisContext = { nickname: el.nickname.value.trim(), date: el.date.value }; const result = analyzeLocally(el.transcript.value.trim()); state = { status: "success", mode: result.mode, scenes: result.scenes, error: "", generatedAt: new Date().toISOString(), analysisContext }; render(); scrollAndFocusResults(); }
+function analyzeBasic() { const validation = validateBasicAnalysisInput({ transcript: el.transcript.value }); el.message.textContent = validation; if (validation) return; controller.invalidate(); const analysisContext = { nickname: el.nickname.value.trim(), date: el.date.value }; const result = analyzeLocally(el.transcript.value.trim()); state = { status: "success", mode: result.mode, scenes: result.scenes, error: "", generatedAt: new Date().toISOString(), analysisContext }; render(); scrollAndFocusResults(); }
 function download(content, type, filename) { const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement("a"); link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 0); }
 
-function fillSample() { el.transcript.value = SAMPLE; el.message.textContent = ""; }
-function handleInput() { el.message.textContent = ""; }
+function fillSample() { el.transcript.value = SAMPLE; el.message.textContent = ""; updateBasicButtonAvailability(el, false); }
+function handleInput() { el.message.textContent = ""; updateBasicButtonAvailability(el, controller.isLoading()); }
 function clearWorkbench() { const hasData = el.nickname.value || el.date.value || el.transcript.value || el.consent.checked || state.status !== "empty"; if (hasData && !window.confirm("要清空输入和当前观察草稿吗？")) return; controller.invalidate(); el.nickname.value = ""; el.date.value = ""; el.transcript.value = ""; el.consent.checked = false; el.message.textContent = ""; state = { status: "empty", mode: null, scenes: [], error: "", generatedAt: null, analysisContext: null }; render(); }
 function exportJson() { download(JSON.stringify(payload(), null, 2), "application/json;charset=utf-8", "abc-observation-draft.json"); }
 function exportCsv() { download(toCsv(payload()), "text/csv;charset=utf-8", "abc-observation-draft.csv"); }

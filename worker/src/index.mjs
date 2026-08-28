@@ -123,7 +123,7 @@ export async function callDeepSeek(input, env, fetchImpl = fetch, timeoutMs = TI
     if (choice?.finish_reason !== 'stop') throw new Error('Upstream completion incomplete');
     const content = choice?.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw new Error('Upstream content missing');
-    return normalizeModelOutput(JSON.parse(content));
+    return normalizeModelOutput(JSON.parse(content), input.transcript);
   } catch {
     throw new Error('AI_UPSTREAM_ERROR');
   } finally {

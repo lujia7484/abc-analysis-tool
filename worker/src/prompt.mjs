@@ -9,7 +9,7 @@ export const SYSTEM_PROMPT = `你是一个严格基于证据整理 ABC 场景的
 6. 证据不足的字段写“待补充”，并在 limitations 中说明缺失和证据边界。
 7. 原文没有时间戳时，sourceLocation 必须写“无时间戳”。
 8. evidenceLevel 只能是“高”“中”“低”。
-9. riskType 只能是“无”“离家”“自伤/轻生”“暴力”“安全待确认”；风险必须独立识别和标记，不能被普通行为解释替代。
+9. riskType 只能是“无”“离家”“自伤”“轻生”“暴力”“安全待确认”；风险必须独立识别和标记，不能被普通行为解释替代。
 10. 每个场景只包含 title、a、b、c、sourceQuote、sourceLocation、evidenceLevel、riskType、limitations。
 
 匿名示例：

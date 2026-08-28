@@ -16,7 +16,9 @@
 
 选择 AI 分析时，请求会经过 Cloudflare 基础设施发送给 DeepSeek。Cloudflare 和 DeepSeek 可能依据各自政策处理、记录或保留相关数据；这些第三方行为不由我们控制，我们也不对其保留期限作出承诺。请阅读 [Cloudflare 隐私政策](https://www.cloudflare.com/privacypolicy/) 和 [DeepSeek 隐私政策](https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html)。提交前请移除姓名、联系方式、账号、地址等身份识别信息，以及不需要分析的敏感数据。
 
-AI 分析失败时，页面会明确显示“使用基础分析”选项。基础分析在浏览器本机按显式规则运行，不会把文本发送到 AI 接口，也不会伪装成 AI 结果。
+只要填写了逐字稿，页面就可直接选择“不发送文本，使用本机基础分析”，无需勾选 AI 隐私同意，也无需先触发 AI 错误。基础分析在浏览器本机按显式规则运行，不会调用 AI 接口，也不会伪装成 AI 结果。
+
+场景证据等级固定为`高/中/低`，风险类型固定为`无/离家/自伤/轻生/暴力/安全待确认`。AI 返回的原文摘录只有在输入逐字稿中精确出现时才作为只读证据展示；无法核对的摘录和时间戳会被降级并明确标注边界。Worker 错误码固定为`PAYLOAD_TOO_LARGE`、`INVALID_INPUT`、`RATE_LIMITED`、`CONFIG_ERROR`和`AI_UPSTREAM_ERROR`，浏览器仅显示本地定义的安全中文提示。
 
 每次提交最多 `20,000` 个字符。服务按 IP 每小时最多接受五次有效请求；限流标识是加盐哈希，不保存原始 IP，并由 Durable Object alarm 安排清理过期窗口。
 

@@ -13,6 +13,10 @@ export function validateAnalysisInput({ transcript, consent }) {
   return "";
 }
 
+export function validateBasicAnalysisInput({ transcript }) {
+  return transcript?.trim() ? "" : "请先填写经历或逐字稿。";
+}
+
 function fingerprintTranscript(transcript) {
   let hash = 0x811c9dc5;
   for (const character of transcript) {

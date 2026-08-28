@@ -34,6 +34,11 @@ export function setLoadingDisabled(elements, loading) {
   }
 }
 
+export function updateBasicButtonAvailability(elements, loading) {
+  elements.basic.hidden = false;
+  elements.basic.disabled = loading || !elements.transcript.value.trim();
+}
+
 export function attachTopLevelListeners(elements, handlers) {
   elements.analyze.addEventListener("click", handlers.onAnalyze);
   elements.basic.addEventListener("click", handlers.onFallback);

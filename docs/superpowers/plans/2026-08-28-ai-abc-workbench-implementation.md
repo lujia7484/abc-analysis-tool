@@ -12,6 +12,7 @@
 
 ## File Map
 
+- Create `src/scene-contract.mjs`: shared scene enums, field limits, IDs, validation, and transcript grounding for Worker and browser consumers.
 - Modify `index.html`: learner-facing double-column shell and privacy consent.
 - Replace `styles.css`: responsive visual system and editable result cards.
 - Create `src/local-analyzer.mjs`: existing deterministic parser and fallback analyzer.
@@ -19,7 +20,7 @@
 - Create `src/app.mjs`: page state, rendering, edits, fallback, copy, and export.
 - Remove `script.js`: superseded monolithic browser script.
 - Create `worker/src/prompt.mjs`: fixed ABC extraction standard and JSON example.
-- Create `worker/src/schema.mjs`: input and model-output validation.
+- Create `worker/src/schema.mjs`: input validation and shared-contract model-output normalization.
 - Create `worker/src/index.mjs`: CORS, Durable Object rate limiter, alarm cleanup, DeepSeek call, and errors.
 - Create `worker/wrangler.jsonc`: Worker, Durable Object binding and migration, variables, and required secret declaration.
 - Create `tests/local-analyzer.test.mjs`: fallback behavior tests.

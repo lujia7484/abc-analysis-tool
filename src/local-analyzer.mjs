@@ -1,3 +1,5 @@
+import { createSceneId } from "./scene-contract.mjs";
+
 const ANCHOR = [
   "因为", "由于", "作业没", "没做完", "老师", "家长", "提醒", "要求",
   "说要", "看到", "当", "先", "先前", "刚刚", "然后",
@@ -75,10 +77,11 @@ function detectRisk(text) {
 
   if (!matched.length) return "无";
   if (matched.includes("无法确认安全")) return "安全待确认";
-  if (matched.includes("自伤") || matched.includes("轻生")) return "自伤/轻生";
-  if (matched.includes("暴力") || matched.includes("打人")) return "暴力风险";
-  if (matched.includes("离家")) return "离家风险";
-  return matched.join("、");
+  if (matched.includes("自伤")) return "自伤";
+  if (matched.includes("轻生")) return "轻生";
+  if (matched.includes("暴力") || matched.includes("打人") || matched.includes("摔东西")) return "暴力";
+  if (matched.includes("离家") || matched.includes("逃跑")) return "离家";
+  return "安全待确认";
 }
 
 function formatUtterances(utterances) {
@@ -135,7 +138,7 @@ function buildScenes(utterances) {
     ].filter(Boolean).join("；");
 
     scenes.push({
-      id: scenes.length + 1,
+      id: createSceneId(scenes.length),
       title: "行为循环场景",
       a: a || "未标注",
       b: b || "待补充（未识别到明确行为）",
@@ -156,6 +159,7 @@ function buildScenes(utterances) {
     });
 
     index = Math.max(aIndex + 1, cIndex + 1, bIndex + 1);
+    if (scenes.length === 20) break;
   }
 
   return scenes;

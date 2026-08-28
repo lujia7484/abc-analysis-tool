@@ -71,7 +71,7 @@ test("setApiEndpoint rejects disallowed URL forms and preserves the prior endpoi
 
 test("analyzeWithAI posts JSON to the exact endpoint without credentials", async () => {
   setApiEndpoint(endpoint);
-  const input = { nickname: "小青", date: "2026-08-28", transcript: "课堂内容" };
+  const input = { nickname: "小青", date: "2026-08-28", transcript: "课堂内容包含原文" };
   let request;
   const result = await analyzeWithAI(input, async (url, options) => {
     request = { url, options };
@@ -112,10 +112,10 @@ test("known error codes use only locally defined Chinese messages", async () => 
   setApiEndpoint(endpoint);
   const cases = [
     ["RATE_LIMITED", "请求过于频繁，请稍后重试"],
-    ["VALIDATION_ERROR", "提交内容无效，请检查后重试"],
+    ["INVALID_INPUT", "提交内容无效，请检查后重试"],
     ["CONFIG_ERROR", "AI 分析服务配置异常，请联系管理员"],
     ["AI_UPSTREAM_ERROR", "AI 分析服务暂时不可用，请稍后重试"],
-    ["BODY_TOO_LARGE", "提交内容过长，请精简后重试"],
+    ["PAYLOAD_TOO_LARGE", "提交内容过长，请精简后重试"],
   ];
   for (const [code, expected] of cases) {
     await assert.rejects(
@@ -127,6 +127,23 @@ test("known error codes use only locally defined Chinese messages", async () => 
       },
     );
   }
+});
+
+test("browser defense-in-depth grounds evidence against its submitted transcript", async () => {
+  setApiEndpoint(endpoint);
+  const transcript = "[00:12] 学员：真实原话";
+  const grounded = await analyzeWithAI({ transcript }, async () => jsonResponse({
+    ok: true, mode: "ai", scenes: [validScene({ sourceQuote: "学员：真实原话", sourceLocation: "00:12" })],
+  }));
+  assert.equal(grounded.scenes[0].sourceQuote, "学员：真实原话");
+  assert.equal(grounded.scenes[0].sourceLocation, "00:12");
+
+  const fabricated = await analyzeWithAI({ transcript }, async () => jsonResponse({
+    ok: true, mode: "ai", scenes: [validScene({ sourceQuote: "伪造原话", sourceLocation: "09:59" })],
+  }));
+  assert.equal(fabricated.scenes[0].sourceQuote, "待补充（未能在输入原文中核对）");
+  assert.equal(fabricated.scenes[0].sourceLocation, "无时间戳");
+  assert.equal(fabricated.scenes[0].evidenceLevel, "低");
 });
 
 test("unknown errors never leak endpoint, stack, or transcript from payload.message", async () => {
@@ -235,18 +252,16 @@ test("success scenes are rebuilt from an allowlist with stable IDs", async () =>
     forbidden: "secret",
     nested: { secret: true },
   });
-  const result = await analyzeWithAI({}, async () => jsonResponse({ ok: true, mode: "ai", scenes: [scene] }));
+  const result = await analyzeWithAI({ transcript: "原文" }, async () => jsonResponse({ ok: true, mode: "ai", scenes: [scene] }));
   assert.deepEqual(result.scenes, [{ id: "scene-1", ...validScene(), revised: false }]);
   assert.notEqual(result.scenes[0], scene);
 });
 
-test("success rejects primitive scenes, more than 20 scenes, invalid enums, and oversized strings", async () => {
+test("success rejects primitive scenes, more than 20 scenes, and oversized strings", async () => {
   setApiEndpoint(endpoint);
   const invalidScenes = [
     ["primitive"],
     Array.from({ length: 21 }, () => validScene()),
-    [validScene({ evidenceLevel: "确定" })],
-    [validScene({ riskType: "焦虑" })],
     [validScene({ title: "x".repeat(201) })],
     [validScene({ sourceLocation: "x".repeat(201) })],
     [validScene({ a: "x".repeat(5001) })],
@@ -262,6 +277,15 @@ test("success rejects primitive scenes, more than 20 scenes, invalid enums, and 
       /返回数据无效/,
     );
   }
+});
+
+test("success normalizes hostile enum values conservatively", async () => {
+  setApiEndpoint(endpoint);
+  const result = await analyzeWithAI({ transcript: "原文" }, async () => jsonResponse({
+    ok: true, mode: "ai", scenes: [validScene({ evidenceLevel: "确定", riskType: "焦虑" })],
+  }));
+  assert.equal(result.scenes[0].evidenceLevel, "低");
+  assert.equal(result.scenes[0].riskType, "安全待确认");
 });
 
 test("timeout aborts a pending fetch and throws a safe timeout error", async () => {

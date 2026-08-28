@@ -1,26 +1,17 @@
+import { normalizeScene, SCENE_LIMITS } from "./scene-contract.mjs";
+
 let apiEndpoint = "";
 
 const PRODUCTION_ENDPOINT = "https://abc-analysis-api.codex-ai-abc-workbench.workers.dev/analyze";
 const GENERIC_SERVICE_ERROR = "AI 分析服务暂时不可用，请稍后重试";
 const INVALID_RESPONSE_ERROR = "AI 分析服务返回数据无效，请稍后重试";
 const MAX_RESPONSE_BYTES = 256 * 1024;
-const EVIDENCE_LEVELS = new Set(["高", "中", "低"]);
-const RISK_TYPES = new Set(["无", "离家", "自伤/轻生", "暴力", "安全待确认"]);
-const SCENE_STRING_LIMITS = Object.freeze({
-  title: 200,
-  a: 5000,
-  b: 5000,
-  c: 5000,
-  sourceQuote: 12000,
-  sourceLocation: 200,
-  limitations: 2000,
-});
 const ERROR_MESSAGES = new Map([
   ["RATE_LIMITED", "请求过于频繁，请稍后重试"],
-  ["VALIDATION_ERROR", "提交内容无效，请检查后重试"],
+  ["INVALID_INPUT", "提交内容无效，请检查后重试"],
   ["CONFIG_ERROR", "AI 分析服务配置异常，请联系管理员"],
   ["AI_UPSTREAM_ERROR", GENERIC_SERVICE_ERROR],
-  ["BODY_TOO_LARGE", "提交内容过长，请精简后重试"],
+  ["PAYLOAD_TOO_LARGE", "提交内容过长，请精简后重试"],
 ]);
 
 function normalizeEndpoint(value) {
@@ -82,31 +73,6 @@ async function readBoundedResponse(response, signal) {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
-function isPlainObject(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function normalizeScene(scene, index) {
-  if (!isPlainObject(scene)) throw new Error(INVALID_RESPONSE_ERROR);
-  const normalized = { id: `scene-${index + 1}` };
-  for (const [field, limit] of Object.entries(SCENE_STRING_LIMITS)) {
-    const value = scene[field];
-    if (typeof value !== "string" || value.length > limit) {
-      throw new Error(INVALID_RESPONSE_ERROR);
-    }
-    normalized[field] = value;
-  }
-  if (!EVIDENCE_LEVELS.has(scene.evidenceLevel) || !RISK_TYPES.has(scene.riskType)) {
-    throw new Error(INVALID_RESPONSE_ERROR);
-  }
-  normalized.evidenceLevel = scene.evidenceLevel;
-  normalized.riskType = scene.riskType;
-  normalized.revised = false;
-  return normalized;
-}
-
 export function setApiEndpoint(url) {
   const normalized = normalizeEndpoint(url);
   if (!normalized) throw new Error("请配置有效的 HTTPS Worker /analyze 地址");
@@ -163,10 +129,14 @@ export async function analyzeWithAI(input, fetchImpl = fetch, timeoutMs = 55_000
       payload?.ok !== true ||
       payload.mode !== "ai" ||
       !Array.isArray(payload.scenes) ||
-      payload.scenes.length > 20
+      payload.scenes.length > SCENE_LIMITS.maxScenes
     ) throw new Error(INVALID_RESPONSE_ERROR);
 
-    return { mode: "ai", scenes: payload.scenes.map(normalizeScene) };
+    try {
+      return { mode: "ai", scenes: payload.scenes.map((scene, index) => normalizeScene(scene, index, input?.transcript ?? "")) };
+    } catch {
+      throw new Error(INVALID_RESPONSE_ERROR);
+    }
   } finally {
     clearTimeoutImpl(timer);
   }

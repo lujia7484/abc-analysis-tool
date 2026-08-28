@@ -10,7 +10,7 @@ const RAW_UPSTREAM = 'private-upstream-marker';
 
 function validScene() {
   return {
-    title: '场景', a: '前因', b: '行为', c: '结果', sourceQuote: '原话',
+    title: '场景', a: '前因', b: '行为', c: '结果', sourceQuote: TRANSCRIPT,
     sourceLocation: '无时间戳', evidenceLevel: '高', riskType: '无', limitations: '',
   };
 }
@@ -261,6 +261,25 @@ test('successful DeepSeek JSON output returns normalized AI scenes and correct r
   assert.equal(payload.max_tokens, 4096);
   assert.equal(payload.stream, false);
   assert.ok(upstreamRequest.init.signal instanceof AbortSignal);
+});
+
+test('Worker grounds model evidence against the submitted transcript', async () => {
+  const modelScene = validScene();
+  modelScene.sourceQuote = 'fabricated quote';
+  modelScene.sourceLocation = '09:59';
+  const result = await json(await handleRequest(request(), env(), async () => deepSeekResponse(JSON.stringify({ scenes: [modelScene] }))));
+  assert.equal(result.response.status, 200);
+  assert.equal(result.body.scenes[0].sourceQuote, '待补充（未能在输入原文中核对）');
+  assert.equal(result.body.scenes[0].sourceLocation, '无时间戳');
+  assert.equal(result.body.scenes[0].evidenceLevel, '低');
+});
+
+test('Worker rejects oversized model fields as AI_UPSTREAM_ERROR', async () => {
+  const modelScene = validScene();
+  modelScene.a = 'x'.repeat(5001);
+  const result = await json(await handleRequest(request(), env(), async () => deepSeekResponse(JSON.stringify({ scenes: [modelScene] }))));
+  assert.equal(result.response.status, 502);
+  assert.equal(result.body.code, 'AI_UPSTREAM_ERROR');
 });
 
 test('empty model content returns safe AI_UPSTREAM_ERROR', async () => {
