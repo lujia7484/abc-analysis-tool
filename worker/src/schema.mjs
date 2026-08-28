@@ -5,6 +5,10 @@ function trimmedString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function sceneFieldString(value) {
+  return value == null ? '' : String(value).trim();
+}
+
 export function validateInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new Error('输入格式无效');
@@ -34,19 +38,19 @@ export function normalizeModelOutput(output) {
       throw new Error('模型输出格式无效');
     }
 
-    const evidenceLevel = trimmedString(scene.evidenceLevel);
-    const riskType = trimmedString(scene.riskType);
+    const evidenceLevel = sceneFieldString(scene.evidenceLevel);
+    const riskType = sceneFieldString(scene.riskType);
     return {
       id: trimmedString(scene.id) || `scene-${index + 1}`,
-      title: trimmedString(scene.title),
-      a: trimmedString(scene.a),
-      b: trimmedString(scene.b),
-      c: trimmedString(scene.c),
-      sourceQuote: trimmedString(scene.sourceQuote),
-      sourceLocation: trimmedString(scene.sourceLocation) || '无时间戳',
+      title: sceneFieldString(scene.title),
+      a: sceneFieldString(scene.a),
+      b: sceneFieldString(scene.b),
+      c: sceneFieldString(scene.c),
+      sourceQuote: sceneFieldString(scene.sourceQuote),
+      sourceLocation: sceneFieldString(scene.sourceLocation) || '无时间戳',
       evidenceLevel: EVIDENCE_LEVELS.has(evidenceLevel) ? evidenceLevel : '低',
       riskType: RISK_TYPES.has(riskType) ? riskType : '无',
-      limitations: trimmedString(scene.limitations),
+      limitations: sceneFieldString(scene.limitations),
       revised: typeof scene.revised === 'boolean' ? scene.revised : false,
     };
   });

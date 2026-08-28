@@ -21,6 +21,10 @@ test('validateInput trims allowed values and removes unknown fields', () => {
   );
 });
 
+test('validateInput does not coerce a non-string transcript', () => {
+  assert.throws(() => validateInput({ transcript: 123 }), /逐字稿不能为空/);
+});
+
 test('normalizeModelOutput normalizes scene fields and blank source locations', () => {
   const result = normalizeModelOutput({
     scenes: [{
@@ -37,6 +41,35 @@ test('normalizeModelOutput normalizes scene fields and blank source locations', 
       sourceQuote: '原话', sourceLocation: '无时间戳', evidenceLevel: '高',
       riskType: '无', limitations: '无', revised: false,
     }],
+  });
+});
+
+test('normalizeModelOutput stringifies primitive scene fields but controls revised as boolean', () => {
+  const result = normalizeModelOutput({ scenes: [{
+    title: 123,
+    a: false,
+    b: 0,
+    c: null,
+    sourceQuote: true,
+    sourceLocation: 456,
+    evidenceLevel: 1,
+    riskType: false,
+    limitations: false,
+    revised: 'true',
+  }] });
+
+  assert.deepEqual(result.scenes[0], {
+    id: 'scene-1',
+    title: '123',
+    a: 'false',
+    b: '0',
+    c: '',
+    sourceQuote: 'true',
+    sourceLocation: '456',
+    evidenceLevel: '低',
+    riskType: '无',
+    limitations: 'false',
+    revised: false,
   });
 });
 
