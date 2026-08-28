@@ -3,3 +3,6 @@
 @media(min-width:960px){.workbench{grid-template-columns:minmax(0,.92fr) minmax(440px,1.08fr);align-items:start}.result-column{position:sticky;top:24px;max-height:calc(100vh - 48px);overflow:auto;scrollbar-color:var(--clay) transparent}}
 @media(max-width:959px){.shell{padding-top:28px}.identity-grid{grid-template-columns:1fr;gap:7px}.identity-grid input+label{margin-top:7px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+.status-card[data-state=success]{min-height:0;padding:10px 14px;border-style:solid;background:var(--green-soft);color:var(--green)}
+.abc-block p,.details,.evidence blockquote,.scene-card h3{overflow-wrap:anywhere}
+@media(min-width:960px){.result-column{max-height:none;overflow:visible}}

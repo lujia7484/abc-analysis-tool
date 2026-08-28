@@ -103,3 +103,25 @@ test("toCsv includes BOM and escapes commas, quotes, and line breaks", () => {
   assert.match(csv, /"ai"/);
   assert.match(csv, /"false"/);
 });
+
+test("toCsv neutralizes formula-leading values in identity, edits, and evidence", () => {
+  const payload = buildExportPayload({
+    nickname: "  =WEBSERVICE(\"bad\")",
+    date: "2026-08-28",
+    mode: "ai",
+    generatedAt: "2026-08-28T04:05:06.000Z",
+    scenes: [scene({
+      a: "+1+1",
+      b: " -2+3",
+      c: "\t@SUM(A1:A2)",
+      sourceQuote: "\r=CMD()",
+    })],
+  });
+  const csv = toCsv(payload);
+
+  assert.match(csv, /"'=WEBSERVICE\(""bad""\)"/);
+  assert.match(csv, /"'\+1\+1"/);
+  assert.match(csv, /" '-2\+3"/);
+  assert.match(csv, /"\t'@SUM\(A1:A2\)"/);
+  assert.match(csv, /"\r'=CMD\(\)"/);
+});

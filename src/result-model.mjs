@@ -77,7 +77,8 @@ export function buildReadable(payload) {
 }
 
 function csvField(value) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const neutralized = String(value ?? "").replace(/^(\s*)([=+\-@])/, "$1'$2");
+  return `"${neutralized.replaceAll('"', '""')}"`;
 }
 
 export function toCsv(payload) {

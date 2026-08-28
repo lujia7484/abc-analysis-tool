@@ -13,17 +13,17 @@
       <div class="identity-grid"><label for="nickname">昵称 <span>选填</span></label><input id="nickname" type="text" placeholder="昵称或留空" autocomplete="off"><label for="session-date">日期 <span>选填</span></label><input id="session-date" type="date"></div>
       <label class="transcript-label" for="transcript">经历或逐字稿</label>
       <textarea id="transcript" rows="15" placeholder="可以按对话或叙述粘贴，例如：家人提醒我先完成约定的事情，我当时很烦，转身离开了……"></textarea>
-      <button id="sample-button" class="text-button" type="button">填入匿名示例</button>
-      <label class="consent" for="privacy-consent"><input id="privacy-consent" type="checkbox"><span>我已了解：点击 AI 分析后，以上文本会发送给 DeepSeek 处理，本服务不会保存这些文本。请避免填写可识别个人身份的信息。</span></label>
-      <div class="primary-actions"><button id="analyze-button" class="primary" type="button">生成 AI 观察草稿</button><button id="clear-button" class="secondary" type="button">清空</button></div>
+      <button id="sample-button" class="text-button" type="button" aria-label="填入不含真实姓名的匿名示例">填入匿名示例</button>
+      <label class="consent" for="privacy-consent"><input id="privacy-consent" type="checkbox"><span>我已了解：这个网页不会主动持久化保存我填写的文本；进行 AI 分析时，文本会经 Cloudflare 发送给 DeepSeek，本次处理遵循 Cloudflare 与 DeepSeek 各自的政策。提交前请移除姓名、联系方式等可识别身份的信息。</span></label>
+      <div class="primary-actions"><button id="analyze-button" class="primary" type="button" aria-label="提交文字并生成 AI 观察草稿">生成 AI 观察草稿</button><button id="clear-button" class="secondary" type="button" aria-label="清空输入和观察草稿">清空</button></div>
       <p id="form-message" class="form-message" aria-live="polite"></p>
     </section>
     <aside id="result-column" class="result-column" aria-labelledby="result-title"><div class="result-panel">
-      <div class="section-heading compact"><span class="step">02</span><div><p class="kicker">再看看其中的联系</p><h2 id="result-title">观察草稿</h2></div></div>
+      <div class="section-heading compact"><span class="step">02</span><div><p class="kicker">再看看其中的联系</p><h2 id="result-title" tabindex="-1">观察草稿</h2></div></div>
       <div id="status-region" class="status-card" role="status" aria-live="polite"></div>
-      <button id="basic-button" class="secondary fallback" type="button" hidden>使用基础分析</button>
+      <button id="basic-button" class="secondary fallback" type="button" aria-label="不发送文本，改用本机基础分析" hidden>使用基础分析</button>
       <div id="summary" class="summary" hidden></div><div id="risk-support" class="risk-support" hidden></div><div id="results" class="results"></div>
-      <section id="export-section" class="export-section" aria-labelledby="export-title" hidden><div class="export-heading"><h3 id="export-title">带走当前草稿</h3><p>导出内容会包含你保存后的修改。</p></div><div class="export-actions"><button id="json-button" class="small-button" type="button" disabled>JSON</button><button id="csv-button" class="small-button" type="button" disabled>CSV</button><button id="copy-button" class="small-button" type="button" disabled>复制可读文本</button></div></section>
+      <section id="export-section" class="export-section" aria-labelledby="export-title" hidden><div class="export-heading"><h3 id="export-title">带走当前草稿</h3><p>导出内容会包含你保存后的修改。</p></div><div class="export-actions"><button id="json-button" class="small-button" type="button" aria-label="下载当前观察草稿 JSON 文件" disabled>JSON</button><button id="csv-button" class="small-button" type="button" aria-label="下载当前观察草稿 CSV 文件" disabled>CSV</button><button id="copy-button" class="small-button" type="button" aria-label="复制当前观察草稿的可读文本" disabled>复制可读文本</button></div></section>
     </div></aside>
   </div>
 </main><script type="module" src="./src/app.mjs"></script></body></html>
