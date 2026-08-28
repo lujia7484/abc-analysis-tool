@@ -136,7 +136,7 @@ function buildScenes(utterances) {
 
     scenes.push({
       id: scenes.length + 1,
-      title: "待命名（可在系统中补充）",
+      title: "行为循环场景",
       a: a || "未标注",
       b: b || "待补充（未识别到明确行为）",
       c: c || "待补充（未识别到明确后果）",

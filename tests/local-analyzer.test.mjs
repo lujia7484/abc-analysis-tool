@@ -40,7 +40,7 @@ test("returns normalized basic scenes with existing evidence and risk labels", (
     scenes: [
       {
         id: 1,
-        title: "待命名（可在系统中补充）",
+        title: "行为循环场景",
         a: "家长（00:01）：因为今天调整了安排",
         b: "孩子（00:08）：我不想继续，还摔东西",
         c: "老师（00:15）：后来情绪缓和了",
@@ -71,7 +71,7 @@ test("normalizes an untimestamped scene without inventing a source range", () =>
     scenes: [
       {
         id: 1,
-        title: "待命名（可在系统中补充）",
+        title: "行为循环场景",
         a: "家长（无时间戳）：因为今天调整了安排",
         b: "孩子（无时间戳）：我不想继续",
         c: "老师（无时间戳）：后来情绪缓和了",
