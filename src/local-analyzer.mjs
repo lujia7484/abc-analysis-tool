@@ -87,6 +87,13 @@ function formatUtterances(utterances) {
     .join("\n");
 }
 
+function formatSourceLocation(start, end) {
+  const timestamps = [start, end].filter((timestamp) => timestamp && timestamp !== "无时间戳");
+  if (!timestamps.length) return "无时间戳";
+  if (timestamps.length === 1) return timestamps[0];
+  return `${timestamps[0]}-${timestamps[1]}`;
+}
+
 function buildScenes(utterances) {
   const scenes = [];
   const maxLookahead = 9;
@@ -134,7 +141,10 @@ function buildScenes(utterances) {
       b: b || "待补充（未识别到明确行为）",
       c: c || "待补充（未识别到明确后果）",
       sourceQuote,
-      sourceLocation: `${utterances[aIndex].timestamp}-${utterances[cIndex]?.timestamp || utterances[bIndex]?.timestamp || "无"}`,
+      sourceLocation: formatSourceLocation(
+        utterances[aIndex].timestamp,
+        utterances[cIndex]?.timestamp || utterances[bIndex]?.timestamp,
+      ),
       evidenceLevel: scoreEvidence(
         aItems.map(({ text }) => text),
         bItems.map(({ text }) => text),
