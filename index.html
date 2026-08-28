@@ -1,65 +1,29 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ABC 模式分析工作台</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="abc-api-endpoint" content="">
+  <title>学员自助 ABC 分析工具</title><link rel="stylesheet" href="./styles.css">
 </head>
-<body>
-  <main class="container">
-    <header class="hero">
-      <p class="eyebrow">标准化分析工具 · 青稞个案</p>
-      <h1>学员 ABC 模式提取网页</h1>
-      <p>按“起因 A - 行为 B - 结果 C”规则抽取，保留逐字原句与证据等级，并标记风险项。</p>
-    </header>
-
-    <section class="panel">
-      <h2>资料输入</h2>
-      <div class="grid">
-        <label>
-          学员姓名
-          <input id="studentName" type="text" placeholder="例如：段凝" />
-        </label>
-        <label>
-          课程日期
-          <input id="sessionDate" type="date" />
-        </label>
-        <label>
-          课程期次
-          <input id="sessionRound" type="text" placeholder="例如：第4期" />
-        </label>
-      </div>
-      <label class="full">
-        逐字稿文本
-        <textarea id="transcript" rows="12" placeholder="可直接粘贴逐句文本，例如：&#10;00:12:01 家长：今天你先把作业写完。 &#10;00:12:12 孩子：不想写，我先玩。"></textarea>
-      </label>
-      <div class="actions">
-        <button id="extractBtn">按标准抽取 ABC</button>
-        <button id="clearBtn" class="secondary">清空</button>
-      </div>
+<body><main class="shell">
+  <header class="hero"><p class="eyebrow">把一段经历，慢慢理清</p><h1>学员自助 ABC 分析工具</h1><p class="intro">从原始文字中整理起因、行为与结果。生成内容是可编辑的观察草稿，不是诊断。</p></header>
+  <div class="workbench">
+    <section class="input-column" aria-labelledby="input-title">
+      <div class="section-heading"><span class="step">01</span><div><p class="kicker">先写下发生了什么</p><h2 id="input-title">我的资料</h2></div></div>
+      <div class="identity-grid"><label for="nickname">昵称 <span>选填</span></label><input id="nickname" type="text" placeholder="昵称或留空" autocomplete="off"><label for="session-date">日期 <span>选填</span></label><input id="session-date" type="date"></div>
+      <label class="transcript-label" for="transcript">经历或逐字稿</label>
+      <textarea id="transcript" rows="15" placeholder="可以按对话或叙述粘贴，例如：家人提醒我先完成约定的事情，我当时很烦，转身离开了……"></textarea>
+      <button id="sample-button" class="text-button" type="button">填入匿名示例</button>
+      <label class="consent" for="privacy-consent"><input id="privacy-consent" type="checkbox"><span>我已了解：点击 AI 分析后，以上文本会发送给 DeepSeek 处理，本服务不会保存这些文本。请避免填写可识别个人身份的信息。</span></label>
+      <div class="primary-actions"><button id="analyze-button" class="primary" type="button">生成 AI 观察草稿</button><button id="clear-button" class="secondary" type="button">清空</button></div>
+      <p id="form-message" class="form-message" aria-live="polite"></p>
     </section>
-
-    <section class="panel">
-      <h2>解析结果</h2>
-      <div id="summaryBar" class="summary">等待解析...</div>
-      <div id="results" class="results"></div>
-    </section>
-
-    <section class="panel">
-      <h2>导出</h2>
-      <div class="actions">
-        <button id="exportJsonBtn" class="secondary" disabled>导出 JSON</button>
-        <button id="exportCsvBtn" class="secondary" disabled>导出 CSV</button>
-        <button id="copyBtn" class="secondary" disabled>复制全部结果文本</button>
-      </div>
-      <label class="full">
-        可读输出（可直接贴入审阅）
-        <textarea id="readableOutput" rows="10" readonly></textarea>
-      </label>
-    </section>
-  </main>
-
-  <script src="./script.js"></script>
-</body>
-</html>
+    <aside id="result-column" class="result-column" aria-labelledby="result-title"><div class="result-panel">
+      <div class="section-heading compact"><span class="step">02</span><div><p class="kicker">再看看其中的联系</p><h2 id="result-title">观察草稿</h2></div></div>
+      <div id="status-region" class="status-card" role="status" aria-live="polite"></div>
+      <button id="basic-button" class="secondary fallback" type="button" hidden>使用基础分析</button>
+      <div id="summary" class="summary" hidden></div><div id="risk-support" class="risk-support" hidden></div><div id="results" class="results"></div>
+      <section id="export-section" class="export-section" aria-labelledby="export-title" hidden><div class="export-heading"><h3 id="export-title">带走当前草稿</h3><p>导出内容会包含你保存后的修改。</p></div><div class="export-actions"><button id="json-button" class="small-button" type="button" disabled>JSON</button><button id="csv-button" class="small-button" type="button" disabled>CSV</button><button id="copy-button" class="small-button" type="button" disabled>复制可读文本</button></div></section>
+    </div></aside>
+  </div>
+</main><script type="module" src="./src/app.mjs"></script></body></html>
