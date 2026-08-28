@@ -121,6 +121,20 @@ test("unknown errors never leak endpoint, stack, or transcript from payload.mess
   }
 });
 
+test("prototype property names are not accepted as known error codes", async () => {
+  setApiEndpoint(endpoint);
+  for (const code of ["constructor", "toString", "__proto__"]) {
+    await assert.rejects(
+      analyzeWithAI({}, async () => jsonResponse({ code, message: "INHERITED_VALUE" }, { status: 500 })),
+      (error) => {
+        assert.equal(error.message, "AI 分析服务暂时不可用，请稍后重试");
+        assert.doesNotMatch(error.message, /INHERITED_VALUE|function|native code|Object/);
+        return true;
+      },
+    );
+  }
+});
+
 test("invalid JSON throws a safe user-facing error", async () => {
   setApiEndpoint(endpoint);
   await assert.rejects(

@@ -2,13 +2,13 @@ let apiEndpoint = "";
 
 const GENERIC_SERVICE_ERROR = "AI 分析服务暂时不可用，请稍后重试";
 const INVALID_RESPONSE_ERROR = "AI 分析服务返回数据无效，请稍后重试";
-const ERROR_MESSAGES = Object.freeze({
-  RATE_LIMITED: "请求过于频繁，请稍后重试",
-  VALIDATION_ERROR: "提交内容无效，请检查后重试",
-  CONFIG_ERROR: "AI 分析服务配置异常，请联系管理员",
-  AI_UPSTREAM_ERROR: GENERIC_SERVICE_ERROR,
-  BODY_TOO_LARGE: "提交内容过长，请精简后重试",
-});
+const ERROR_MESSAGES = new Map([
+  ["RATE_LIMITED", "请求过于频繁，请稍后重试"],
+  ["VALIDATION_ERROR", "提交内容无效，请检查后重试"],
+  ["CONFIG_ERROR", "AI 分析服务配置异常，请联系管理员"],
+  ["AI_UPSTREAM_ERROR", GENERIC_SERVICE_ERROR],
+  ["BODY_TOO_LARGE", "提交内容过长，请精简后重试"],
+]);
 
 function isValidEndpoint(value) {
   if (typeof value !== "string" || value.trim() === "") return false;
@@ -22,7 +22,7 @@ function isValidEndpoint(value) {
 }
 
 function messageForErrorCode(payload) {
-  return ERROR_MESSAGES[payload?.code] ?? GENERIC_SERVICE_ERROR;
+  return ERROR_MESSAGES.get(payload?.code) ?? GENERIC_SERVICE_ERROR;
 }
 
 export function setApiEndpoint(url) {
