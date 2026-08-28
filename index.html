@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ABC 模式分析工作台</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <p class="eyebrow">标准化分析工具 · 青稞个案</p>
+      <h1>学员 ABC 模式提取网页</h1>
+      <p>按“起因 A - 行为 B - 结果 C”规则抽取，保留逐字原句与证据等级，并标记风险项。</p>
+    </header>
+
+    <section class="panel">
+      <h2>资料输入</h2>
+      <div class="grid">
+        <label>
+          学员姓名
+          <input id="studentName" type="text" placeholder="例如：段凝" />
+        </label>
+        <label>
+          课程日期
+          <input id="sessionDate" type="date" />
+        </label>
+        <label>
+          课程期次
+          <input id="sessionRound" type="text" placeholder="例如：第4期" />
+        </label>
+      </div>
+      <label class="full">
+        逐字稿文本
+        <textarea id="transcript" rows="12" placeholder="可直接粘贴逐句文本，例如：&#10;00:12:01 家长：今天你先把作业写完。 &#10;00:12:12 孩子：不想写，我先玩。"></textarea>
+      </label>
+      <div class="actions">
+        <button id="extractBtn">按标准抽取 ABC</button>
+        <button id="clearBtn" class="secondary">清空</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>解析结果</h2>
+      <div id="summaryBar" class="summary">等待解析...</div>
+      <div id="results" class="results"></div>
+    </section>
+
+    <section class="panel">
+      <h2>导出</h2>
+      <div class="actions">
+        <button id="exportJsonBtn" class="secondary" disabled>导出 JSON</button>
+        <button id="exportCsvBtn" class="secondary" disabled>导出 CSV</button>
+        <button id="copyBtn" class="secondary" disabled>复制全部结果文本</button>
+      </div>
+      <label class="full">
+        可读输出（可直接贴入审阅）
+        <textarea id="readableOutput" rows="10" readonly></textarea>
+      </label>
+    </section>
+  </main>
+
+  <script src="./script.js"></script>
+</body>
+</html>
