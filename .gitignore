@@ -1,2 +1,7 @@
 .superpowers/
 .worktrees/
+node_modules/
+.dev.vars*
+.env*
+.wrangler/
+worker/.wrangler/
